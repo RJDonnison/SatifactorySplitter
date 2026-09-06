@@ -42,11 +42,11 @@ export function beltInfo(e: NetEdge): BeltInfo {
 }
 
 const SIZES: Record<NetNode['kind'], { w: number; h: number }> = {
-  source: { w: 176, h: 56 },
-  sink: { w: 176, h: 64 },
-  overflow: { w: 176, h: 56 },
-  splitter: { w: 56, h: 88 },
-  merger: { w: 56, h: 88 },
+  source: { w: 184, h: 60 },
+  sink: { w: 184, h: 68 },
+  overflow: { w: 184, h: 60 },
+  splitter: { w: 68, h: 96 },
+  merger: { w: 68, h: 96 },
 }
 
 const elk = new ELK()
@@ -69,8 +69,8 @@ export async function layoutSolution(sol: Solution): Promise<{
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': 'RIGHT',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '72',
-      'elk.spacing.nodeNode': '48',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '120',
+      'elk.spacing.nodeNode': '64',
       'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
     },
     children,
@@ -87,7 +87,7 @@ export async function layoutSolution(sol: Solution): Promise<{
 
   const nodes: SolutionNodeType[] = sol.nodes.map((n) => {
     const p = pos.get(n.id) ?? { x: 0, y: 0 }
-    const base = { id: n.id, position: p, draggable: false }
+    const base = { id: n.id, position: p, draggable: true }
     switch (n.kind) {
       case 'source':
         return {

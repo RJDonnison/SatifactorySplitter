@@ -32,7 +32,7 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
       if (cancelled) return
       setNodes(nodes)
       setEdges(edges)
-      requestAnimationFrame(() => fitView({ padding: 0.15, duration: 400 }))
+      requestAnimationFrame(() => fitView({ padding: 0.25, duration: 400 }))
     })
     return () => {
       cancelled = true
@@ -55,9 +55,10 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      minZoom={0.15}
+      minZoom={0.1}
       maxZoom={2}
-      nodesDraggable={false}
+      nodesDraggable
+      nodesConnectable={false}
       proOptions={{ hideAttribution: false }}
     >
       <Background variant={BackgroundVariant.Dots} gap={28} color="#27272a" />
