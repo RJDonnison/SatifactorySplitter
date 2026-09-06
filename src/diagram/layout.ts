@@ -35,13 +35,16 @@ export interface BeltInfo {
   label: string
 }
 
+/** dim neutral for plain belts so tier colors (incl. Mk.1 taps) stand out */
+const PLAIN_BELT_HEX = '#52525b'
+
 export function beltInfo(e: NetEdge): BeltInfo {
   if (e.tapMk !== null)
     return { hex: BELT_HEX[e.tapMk - 1], label: `Mk.${e.tapMk} tap` }
   // non-tap belts share one neutral color; the label still states the minimum tier
   if (e.minMk !== null && e.minMk > 1)
-    return { hex: BELT_HEX[0], label: `Mk.${e.minMk}+` }
-  return { hex: BELT_HEX[0], label: 'any belt' }
+    return { hex: PLAIN_BELT_HEX, label: `Mk.${e.minMk}+` }
+  return { hex: PLAIN_BELT_HEX, label: 'any belt' }
 }
 
 const SIZES: Record<NetNode['kind'], { w: number; h: number }> = {
