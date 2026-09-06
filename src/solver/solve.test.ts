@@ -163,6 +163,27 @@ describe('solve — approximation', () => {
     expect(Math.abs(r.out2 - 80) / 80).toBeLessThanOrEqual(0.01)
     expect(verify(s).ok).toBe(true)
   })
+
+  it('780 -> 150 uses a Mk.2 tap plus a split Mk.1 piece (2 splitters, 1 merger)', () => {
+    const s = S([780], [150])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(s.buildings.splitters).toBe(2)
+    expect(s.buildings.mergers).toBe(2)
+    const r = ratesByTarget(s)
+    expect(r.out1).toBe(150)
+    expect(s.warnings.some((w) => w.text.includes('overflow'))).toBe(true)
+    expect(verify(s).ok).toBe(true)
+  })
+
+  it('780 -> 30 uses a Mk.1 tap split two ways', () => {
+    const s = S([780], [30])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(s.buildings.splitters).toBe(2)
+    expect(ratesByTarget(s).out1).toBe(30)
+    expect(verify(s).ok).toBe(true)
+  })
 })
 
 describe('solve — errors', () => {

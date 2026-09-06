@@ -9,7 +9,7 @@ import {
   resetShares,
   type ShareGroup,
 } from './shares'
-import { buildTapChain, coinDecomp, planTapChain } from './taps'
+import { buildTapChain, decomposeTarget, planTapChain } from './taps'
 import type { Solution, SolveInput, TargetSpec, Warning } from './types'
 import { verify } from './verify'
 
@@ -210,9 +210,9 @@ function tapSolution(
   tolerance: number,
   allowPair: boolean,
 ): Solution | null {
-  const coinsByGid = targets.map((t) => coinDecomp(t.rate))
-  if (!coinsByGid.some((c) => c !== null)) return null
-  const plan = planTapChain(Rf, coinsByGid, allowPair)
+  const decompByGid = targets.map((t) => decomposeTarget(t.rate))
+  if (!decompByGid.some((c) => c !== null)) return null
+  const plan = planTapChain(Rf, decompByGid, allowPair)
   if (!plan) return null
 
   const usedGids = new Set<number>()
@@ -249,9 +249,9 @@ function tapSolution(
   const b = new NetBuilder()
   const entry = buildTrunk(b, inputRates)
   const leafPorts = new Map<number, BeltEnd[]>()
-  const drain = buildTapChain(b, plan.steps, entry, leafPorts)
-
   const ovfGid = targets.length
+  const drain = buildTapChain(b, plan.steps, entry, leafPorts, ovfGid)
+
   const overflowEnds: BeltEnd[] = []
   if (tailTargets.length > 0) {
     const overflowK = tailN - tailKs.reduce((a, c) => a + c, 0)
