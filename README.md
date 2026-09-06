@@ -1,32 +1,46 @@
-# React + TypeScript + Vite
+# SatifactorySplitter
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A web planner for [Satisfactory](https://satisfactory.wiki.gg) conveyor
+networks: give it input and output belt rates and it synthesizes the most
+building-efficient layout of splitters, mergers and belt tiers — including
+saturation "taps" (limited belts) and minimum-tier belt assignment.
 
-Currently, two official plugins are available:
+Built with React, Vite, Tailwind CSS, React Flow (elkjs layout) and a pure
+TypeScript solver with an exact-rational core and steady-state verifier.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Exact ratios** where constructible: equal-split trees (½ / ⅓ parts) with
+  subtree pruning and per-output merge trees.
+- **Belt taps**: a lower-tier belt on a splitter output saturates at its own
+  throughput — e.g. splitting 780/min with a Mk.1 and Mk.2 tap gives exact
+  180/min and 600/min outputs from a single splitter + merger.
+- **Minimum belt tiers**: every segment is labelled with the cheapest belt
+  that carries it ("Mk.4+", or "any belt" for ≤ 60/min).
+- **Approximate mode**: non-constructible ratios (like exactly 1/5) snap to
+  the nearest achievable rate within an adjustable tolerance and are flagged
+  as approximate.
+- **Shareable links**: the whole problem is encoded in the URL.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Development
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm install
+npm run dev     # vite dev server
+npm test        # vitest unit tests (solver)
+npm run e2e     # playwright end-to-end tests (builds + serves preview)
+npm run build   # typecheck + production build
+npm run lint    # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Deployment
+
+GitHub Pages via `.github/workflows/deploy.yml` — on push to `main` it runs
+the unit tests, builds, and publishes. Enable it once via
+**Settings → Pages → Source: GitHub Actions**.
+
+## AI disclosure
+
+This application was designed and built with AI assistance (opencode / GLM),
+under human direction. Game data (belt speeds, splitter/merger behaviour) is
+taken from the community wiki; not affiliated with Coffee Stain Studios.
