@@ -1,3 +1,8 @@
+import { useMemo } from 'react'
+import { useStore } from './state/store'
+import { solve } from './solver/solve'
+import { Diagram } from './diagram/Diagram'
+
 export const REPO_URL = 'https://github.com/reujdon/SatifactorySplitter'
 
 function GitHubIcon() {
@@ -13,6 +18,19 @@ function GitHubIcon() {
 }
 
 export default function App() {
+  const inputs = useStore((s) => s.inputs)
+  const outputs = useStore((s) => s.outputs)
+  const tolerance = useStore((s) => s.tolerance)
+  const solution = useMemo(
+    () =>
+      solve({
+        inputs: inputs.map((i) => i.rate),
+        outputs: outputs.map((o) => ({ id: o.id, rate: o.rate })),
+        tolerance,
+      }),
+    [inputs, outputs, tolerance],
+  )
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
@@ -40,7 +58,7 @@ export default function App() {
           {/* IO editor (milestone 4) */}
         </aside>
         <section className="relative min-w-0 flex-1 bg-zinc-950">
-          {/* diagram (milestone 3) */}
+          <Diagram solution={solution} />
         </section>
         <aside className="hidden w-72 shrink-0 border-l border-zinc-800 p-4 xl:block">
           {/* build summary (milestone 5) */}

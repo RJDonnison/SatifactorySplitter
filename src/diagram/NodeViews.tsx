@@ -1,0 +1,172 @@
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
+import type {
+  MergerData,
+  OverflowData,
+  SinkData,
+  SolutionNodeType,
+  SourceData,
+  SplitterData,
+} from './layout'
+
+const handleBase =
+  '!h-2 !w-2 !border-0 !min-h-0 !min-w-0 transition-transform hover:scale-125'
+
+function SourceView({ data }: NodeProps<Node<SourceData, 'source'>>) {
+  return (
+    <div className="flex h-14 w-44 flex-col justify-center rounded-xl border border-emerald-500/40 bg-zinc-900 px-3 shadow-lg shadow-black/40">
+      <span className="text-[10px] font-medium uppercase tracking-widest text-emerald-400/90">
+        Input
+      </span>
+      <span className="text-sm font-semibold text-zinc-100">{data.rate}</span>
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="p0"
+        className={`${handleBase} !bg-emerald-400`}
+      />
+    </div>
+  )
+}
+
+function SinkView({ data }: NodeProps<Node<SinkData, 'sink'>>) {
+  return (
+    <div
+      className={`flex h-16 w-44 flex-col justify-center rounded-xl border bg-zinc-900 px-3 shadow-lg shadow-black/40 ${
+        data.approximate ? 'border-amber-500/40' : 'border-sky-500/40'
+      }`}
+    >
+      <span
+        className={`text-[10px] font-medium uppercase tracking-widest ${
+          data.approximate ? 'text-amber-400/90' : 'text-sky-400/90'
+        }`}
+      >
+        {data.label} {data.approximate && '· approx'}
+      </span>
+      <span className="text-sm font-semibold text-zinc-100">{data.rate}</span>
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="p0"
+        className={`${handleBase} !bg-sky-400`}
+      />
+    </div>
+  )
+}
+
+function OverflowView({ data }: NodeProps<Node<OverflowData, 'overflow'>>) {
+  return (
+    <div className="flex h-14 w-44 flex-col justify-center rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 px-3">
+      <span className="text-[10px] font-medium uppercase tracking-widest text-amber-400/90">
+        Overflow
+      </span>
+      <span className="text-sm font-semibold text-zinc-100">{data.rate}</span>
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="p0"
+        className={`${handleBase} !bg-amber-400`}
+      />
+    </div>
+  )
+}
+
+function portTop(i: number, count: number) {
+  return `${((i + 1) / (count + 1)) * 100}%`
+}
+
+function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
+  return (
+    <div className="flex h-[88px] w-14 flex-col items-center justify-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="p0"
+        className={`${handleBase} !bg-zinc-400`}
+      />
+      {data.inRate && (
+        <span className="text-[10px] font-medium tabular-nums text-zinc-400">
+          {data.inRate}
+        </span>
+      )}
+      <svg
+        viewBox="0 0 24 24"
+        className="h-6 w-6 text-zinc-500"
+        aria-hidden="true"
+      >
+        <path
+          d="M3 12h6M9 12l6-6M9 12l6 6M15 6h6M15 18h6"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+      <div className="flex flex-col gap-1.5">
+        {data.ports.map((p, i) => (
+          <span
+            key={i}
+            className="h-1.5 w-4 rounded-full"
+            style={{ backgroundColor: p.hex }}
+            title={p.tapMk ? `Mk.${p.tapMk} tap` : 'open port'}
+          />
+        ))}
+      </div>
+      {data.ports.map((p, i) => (
+        <Handle
+          key={`h${i}`}
+          type="source"
+          position={Position.Right}
+          id={`p${i}`}
+          style={{ top: portTop(i, data.ports.length), backgroundColor: p.hex }}
+          className={handleBase}
+        />
+      ))}
+    </div>
+  )
+}
+
+function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
+  return (
+    <div className="flex h-[88px] w-14 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="p0"
+        className={`${handleBase} !bg-zinc-400`}
+      />
+      <svg
+        viewBox="0 0 24 24"
+        className="h-6 w-6 -scale-x-100 text-zinc-500"
+        aria-hidden="true"
+      >
+        <path
+          d="M3 12h6M9 12l6-6M9 12l6 6M15 6h6M15 18h6"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+      {['25%', '50%', '75%'].map((top) => (
+        <Handle
+          key={top}
+          type="target"
+          position={Position.Left}
+          id={`p${top === '25%' ? 0 : top === '50%' ? 1 : 2}`}
+          style={{ top }}
+          className={`${handleBase} !bg-zinc-400`}
+        />
+      ))}
+    </div>
+  )
+}
+
+export const nodeTypes = {
+  source: SourceView,
+  sink: SinkView,
+  overflow: OverflowView,
+  splitter: SplitterView,
+  merger: MergerView,
+}
+
+export type { SolutionNodeType }

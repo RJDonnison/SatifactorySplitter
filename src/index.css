@@ -42,3 +42,25 @@ input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+.react-flow__controls {
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.react-flow__controls-button {
+  background: #18181b;
+  border-bottom: 1px solid #27272a;
+  fill: #a1a1aa;
+}
+.react-flow__controls-button:hover {
+  background: #27272a;
+}
+.react-flow__attribution {
+  background: transparent;
+  color: #3f3f46;
+}
+.react-flow__edge-textbg {
+  fill: #09090b;
+}
