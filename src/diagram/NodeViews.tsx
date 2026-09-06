@@ -70,10 +70,6 @@ function OverflowView({ data }: NodeProps<Node<OverflowData, 'overflow'>>) {
   )
 }
 
-function portTop(i: number, count: number) {
-  return `${((i + 1) / (count + 1)) * 100}%`
-}
-
 function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
   return (
     <div className="flex h-24 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
@@ -102,8 +98,8 @@ function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
         />
       </svg>
       <div className="flex flex-col gap-1.5">
-        {data.ports.map((p, i) => (
-          <span key={i} className="group relative flex items-center">
+        {data.ports.map((p) => (
+          <span key={p.port} className="group relative flex items-center">
             <span
               className="block h-1.5 w-4 rounded-full"
               style={{ backgroundColor: p.hex }}
@@ -114,13 +110,13 @@ function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
           </span>
         ))}
       </div>
-      {data.ports.map((p, i) => (
+      {data.ports.map((p) => (
         <Handle
-          key={`h${i}`}
+          key={`h${p.port}`}
           type="source"
           position={Position.Right}
-          id={`p${i}`}
-          style={{ top: portTop(i, data.ports.length), backgroundColor: p.hex }}
+          id={`p${p.port}`}
+          style={{ top: p.top, backgroundColor: p.hex }}
           className={handleBase}
         />
       ))}
@@ -128,7 +124,9 @@ function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
   )
 }
 
-function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
+const MERGER_SLOTS = ['25%', '50%', '75%']
+
+function MergerView({ data }: NodeProps<Node<MergerData, 'merger'>>) {
   return (
     <div className="flex h-24 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500/60 bg-fuchsia-500/5 shadow-lg shadow-black/40">
       <Handle
@@ -153,13 +151,13 @@ function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
       <span className="text-[8px] font-semibold uppercase tracking-widest text-fuchsia-300/90">
         Merge
       </span>
-      {['25%', '50%', '75%'].map((top) => (
+      {[0, 1, 2].map((p) => (
         <Handle
-          key={top}
+          key={p}
           type="target"
           position={Position.Left}
-          id={`p${top === '25%' ? 0 : top === '50%' ? 1 : 2}`}
-          style={{ top }}
+          id={`p${p}`}
+          style={{ top: data.inputTops?.[p] ?? MERGER_SLOTS[p] }}
           className={`${handleBase} !bg-fuchsia-400`}
         />
       ))}

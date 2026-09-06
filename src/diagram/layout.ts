@@ -17,9 +17,11 @@ export interface OverflowData extends Record<string, unknown> {
 }
 export interface SplitterData extends Record<string, unknown> {
   inRate: string | null
-  ports: { hex: string; tapMk: number | null }[]
+  ports: { hex: string; tapMk: number | null; port: number; top: string }[]
 }
-export interface MergerData extends Record<string, unknown> {}
+export interface MergerData extends Record<string, unknown> {
+  inputTops: string[]
+}
 
 export type SolutionNodeType =
   | Node<SourceData, 'source'>
@@ -83,6 +85,46 @@ export async function layoutSolution(sol: Solution): Promise<{
     (graph.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
   )
 
+  const yOf = (id: string) => (pos.get(id) ?? { x: 0, y: 0 }).y
+
+  // Rank each splitter's output slots (and each merger's input slots) by the
+  // vertical position of the node on the other end, so belts fan out in order
+  // instead of crossing over each other.
+  const outTop = new Map<string, string>()
+  for (const n of sol.nodes) {
+    if (n.kind !== 'splitter') continue
+    const outs = sol.edges
+      .filter((e) => e.src === n.id)
+      .sort(
+        (a, b) =>
+          yOf(a.dst) - yOf(b.dst) ||
+          a.dstPort - b.dstPort ||
+          a.srcPort - b.srcPort,
+      )
+    outs.forEach((e, rank) => {
+      outTop.set(
+        `${e.src}:${e.srcPort}`,
+        `${(((rank + 1) / (outs.length + 1)) * 100).toFixed(2)}%`,
+      )
+    })
+  }
+  const MERGER_SLOTS = ['25%', '50%', '75%']
+  const inTop = new Map<string, string>()
+  for (const n of sol.nodes) {
+    if (n.kind !== 'merger') continue
+    const ins = sol.edges
+      .filter((e) => e.dst === n.id)
+      .sort(
+        (a, b) =>
+          yOf(a.src) - yOf(b.src) ||
+          a.srcPort - b.srcPort ||
+          a.dstPort - b.dstPort,
+      )
+    ins.forEach((e, rank) => {
+      inTop.set(`${e.dst}:${e.dstPort}`, MERGER_SLOTS[rank] ?? '75%')
+    })
+  }
+
   const inRateOf = (id: string): string | null => {
     const e = sol.edges.find((x) => x.dst === id && x.dstPort === 0)
     return e ? formatFrac(e.rate) : null
@@ -120,15 +162,28 @@ export async function layoutSolution(sol: Solution): Promise<{
           type: 'splitter',
           data: {
             inRate: inRateOf(n.id),
-            ports: n.ports.map((port) =>
-              port.limited
-                ? { hex: BELT_HEX[port.mk - 1], tapMk: port.mk }
-                : { hex: '#3f3f46', tapMk: null },
-            ),
+            ports: n.ports
+              .map((port, portIndex) => ({
+                hex: port.limited ? BELT_HEX[port.mk - 1] : '#3f3f46',
+                tapMk: port.limited ? port.mk : null,
+                port: portIndex,
+                top:
+                  outTop.get(`${n.id}:${portIndex}`) ??
+                  `${(((portIndex + 1) / (n.ports.length + 1)) * 100).toFixed(2)}%`,
+              }))
+              .sort((a, b) => parseFloat(a.top) - parseFloat(b.top)),
           },
         }
       case 'merger':
-        return { ...base, type: 'merger', data: {} }
+        return {
+          ...base,
+          type: 'merger',
+          data: {
+            inputTops: [0, 1, 2].map(
+              (p) => inTop.get(`${n.id}:${p}`) ?? MERGER_SLOTS[p],
+            ),
+          },
+        }
     }
   })
 
