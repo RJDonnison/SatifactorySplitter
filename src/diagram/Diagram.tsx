@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   BackgroundVariant,
   Controls,
+  applyNodeChanges,
   useReactFlow,
   type Edge,
+  type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { Solution } from '../solver/types'
@@ -25,6 +27,12 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
   const [nodes, setNodes] = useState<SolutionNodeType[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
   const { fitView } = useReactFlow()
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange<SolutionNodeType>[]) =>
+      setNodes((nds) => applyNodeChanges(changes, nds)),
+    [],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -55,6 +63,7 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      onNodesChange={onNodesChange}
       minZoom={0.1}
       maxZoom={2}
       nodesDraggable

@@ -76,7 +76,7 @@ function portTop(i: number, count: number) {
 
 function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
   return (
-    <div className="flex h-[88px] w-14 flex-col items-center justify-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
+    <div className="flex h-24 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
       <Handle
         type="target"
         position={Position.Left}
@@ -130,16 +130,16 @@ function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
 
 function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
   return (
-    <div className="flex h-[88px] w-14 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 shadow-lg shadow-black/40">
+    <div className="flex h-24 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500/60 bg-fuchsia-500/5 shadow-lg shadow-black/40">
       <Handle
         type="source"
         position={Position.Right}
         id="p0"
-        className={`${handleBase} !bg-zinc-400`}
+        className={`${handleBase} !bg-fuchsia-400`}
       />
       <svg
         viewBox="0 0 24 24"
-        className="h-6 w-6 -scale-x-100 text-zinc-500"
+        className="h-6 w-6 -scale-x-100 text-fuchsia-400"
         aria-hidden="true"
       >
         <path
@@ -150,6 +150,9 @@ function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
           fill="none"
         />
       </svg>
+      <span className="text-[8px] font-semibold uppercase tracking-widest text-fuchsia-300/90">
+        Merge
+      </span>
       {['25%', '50%', '75%'].map((top) => (
         <Handle
           key={top}
@@ -157,7 +160,7 @@ function MergerView(_: NodeProps<Node<MergerData, 'merger'>>) {
           position={Position.Left}
           id={`p${top === '25%' ? 0 : top === '50%' ? 1 : 2}`}
           style={{ top }}
-          className={`${handleBase} !bg-zinc-400`}
+          className={`${handleBase} !bg-fuchsia-400`}
         />
       ))}
     </div>

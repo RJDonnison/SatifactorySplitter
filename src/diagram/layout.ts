@@ -46,8 +46,8 @@ const SIZES: Record<NetNode['kind'], { w: number; h: number }> = {
   source: { w: 184, h: 60 },
   sink: { w: 184, h: 68 },
   overflow: { w: 184, h: 60 },
-  splitter: { w: 68, h: 96 },
-  merger: { w: 68, h: 96 },
+  splitter: { w: 64, h: 96 },
+  merger: { w: 64, h: 96 },
 }
 
 const elk = new ELK()
@@ -70,8 +70,10 @@ export async function layoutSolution(sol: Solution): Promise<{
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': 'RIGHT',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '120',
-      'elk.spacing.nodeNode': '64',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '150',
+      'elk.spacing.nodeNode': '72',
+      'elk.spacing.edgeEdge': '24',
+      'elk.spacing.edgeNode': '36',
       'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
     },
     children,
@@ -132,6 +134,11 @@ export async function layoutSolution(sol: Solution): Promise<{
 
   const edges: Edge[] = sol.edges.map((e) => {
     const info = beltInfo(e)
+    // plain belts carry only their rate; taps also name the limiting belt
+    const label =
+      e.tapMk !== null
+        ? `${formatFrac(e.rate)} · ${info.label}`
+        : formatFrac(e.rate)
     return {
       id: e.id,
       source: e.src,
@@ -139,11 +146,11 @@ export async function layoutSolution(sol: Solution): Promise<{
       sourceHandle: `p${e.srcPort}`,
       targetHandle: `p${e.dstPort}`,
       type: 'smoothstep',
-      label: `${formatFrac(e.rate)} · ${info.label}`,
+      label,
       style: { stroke: info.hex, strokeWidth: 2 },
-      labelStyle: { fill: '#a1a1aa', fontSize: 11 },
+      labelStyle: { fill: '#a1a1aa', fontSize: 10 },
       labelBgStyle: { fill: '#09090b' },
-      labelBgPadding: [6, 3] as [number, number],
+      labelBgPadding: [5, 2] as [number, number],
       labelBgBorderRadius: 4,
       pathOptions: { borderRadius: 10 },
     }
