@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useStore } from './state/store'
 import { solve } from './solver/solve'
 import { Diagram } from './diagram/Diagram'
 import { IOEditor } from './components/IOEditor'
 import { Warnings } from './components/Warnings'
+import { Summary } from './components/Summary'
+import { writeProblemToUrl } from './state/urlState'
 
 export const REPO_URL = 'https://github.com/reujdon/SatifactorySplitter'
 
@@ -23,6 +25,13 @@ export default function App() {
   const inputs = useStore((s) => s.inputs)
   const outputs = useStore((s) => s.outputs)
   const tolerance = useStore((s) => s.tolerance)
+
+  // keep the URL in sync so a refresh or copy keeps the current problem
+  // (initial state itself is restored from ?s= in the store)
+  useEffect(() => {
+    writeProblemToUrl({ inputs, outputs, tolerance })
+  }, [inputs, outputs, tolerance])
+
   const solution = useMemo(
     () =>
       solve({
@@ -63,8 +72,8 @@ export default function App() {
         <section className="relative min-w-0 flex-1 bg-zinc-950">
           <Diagram solution={solution} />
         </section>
-        <aside className="hidden w-72 shrink-0 border-l border-zinc-800 p-4 xl:block">
-          {/* build summary (milestone 5) */}
+        <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-zinc-800 p-4 xl:flex">
+          <Summary solution={solution} />
         </aside>
       </main>
 

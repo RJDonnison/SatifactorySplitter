@@ -1,0 +1,124 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - heading "SF/Splitter" [level=1] [ref=f4e6]
+      - paragraph [ref=f4e7]: Satisfactory splitter & belt planner
+    - link "GitHub" [ref=f4e8] [cursor=pointer]:
+      - /url: https://github.com/reujdon/SatifactorySplitter
+  - main [ref=f4e11]:
+    - complementary [ref=f4e12]:
+      - generic [ref=f4e13]:
+        - generic [ref=f4e14]:
+          - generic [ref=f4e15]:
+            - heading "Inputs" [level=2] [ref=f4e16]
+            - generic [ref=f4e17]: 780/min
+          - generic [ref=f4e19]:
+            - generic [ref=f4e20]: "1"
+            - spinbutton [ref=f4e21]: "780"
+            - generic [ref=f4e22]: /min
+            - generic [ref=f4e24]:
+              - button "Set Mk.1 (60 per minute)" [ref=f4e25]
+              - button "Set Mk.2 (120 per minute)" [ref=f4e26]
+              - button "Set Mk.3 (270 per minute)" [ref=f4e27]
+              - button "Set Mk.4 (480 per minute)" [ref=f4e28]
+              - button "Set Mk.5 (780 per minute)" [ref=f4e29]
+              - button "Set Mk.6 (1200 per minute)" [ref=f4e30]
+            - button "Remove input" [ref=f4e31]: ×
+          - button "+ Add input belt" [ref=f4e32]
+        - generic [ref=f4e33]:
+          - generic [ref=f4e34]:
+            - heading "Outputs" [level=2] [ref=f4e35]
+            - generic [ref=f4e36]: 780/min
+          - generic [ref=f4e37]:
+            - generic [ref=f4e38]:
+              - generic [ref=f4e39]: "1"
+              - generic [ref=f4e40]:
+                - spinbutton [ref=f4e41]: "390"
+                - text: 50%
+              - generic [ref=f4e43]:
+                - button "Set Mk.1 (60 per minute)" [ref=f4e44]
+                - button "Set Mk.2 (120 per minute)" [ref=f4e45]
+                - button "Set Mk.3 (270 per minute)" [ref=f4e46]
+                - button "Set Mk.4 (480 per minute)" [ref=f4e47]
+                - button "Set Mk.5 (780 per minute)" [ref=f4e48]
+                - button "Set Mk.6 (1200 per minute)" [ref=f4e49]
+              - button "Remove output" [ref=f4e50]: ×
+            - generic [ref=f4e51]:
+              - generic [ref=f4e52]: "2"
+              - generic [ref=f4e53]:
+                - spinbutton [ref=f4e54]: "390"
+                - text: 50%
+              - generic [ref=f4e56]:
+                - button "Set Mk.1 (60 per minute)" [ref=f4e57]
+                - button "Set Mk.2 (120 per minute)" [ref=f4e58]
+                - button "Set Mk.3 (270 per minute)" [ref=f4e59]
+                - button "Set Mk.4 (480 per minute)" [ref=f4e60]
+                - button "Set Mk.5 (780 per minute)" [ref=f4e61]
+                - button "Set Mk.6 (1200 per minute)" [ref=f4e62]
+              - button "Remove output" [ref=f4e63]: ×
+          - button "+ Add output belt" [ref=f4e64]
+        - generic [ref=f4e65]:
+          - generic [ref=f4e66]:
+            - heading "Snap tolerance" [level=2] [ref=f4e67]
+            - generic [ref=f4e68]: ±1.0%
+          - slider "Snap tolerance percent" [ref=f4e69]: "1"
+          - paragraph [ref=f4e70]: Some ratios (e.g. exactly 1/5) cannot be built from equal splits and belt taps — those outputs snap to the nearest achievable rate within this tolerance.
+    - application [ref=f4e72]:
+      - generic "Control Panel" [ref=f4e75]:
+        - button "Zoom In" [ref=f4e76] [cursor=pointer]
+        - button "Zoom Out" [ref=f4e79] [cursor=pointer]
+        - button "Fit View" [ref=f4e82] [cursor=pointer]
+      - link "React Flow attribution" [ref=f4e86] [cursor=pointer]:
+        - /url: https://reactflow.dev/attribution
+        - text: React Flow
+    - complementary [ref=f4e88]:
+      - generic [ref=f4e89]:
+        - heading "Build summary" [level=2] [ref=f4e90]
+        - generic [ref=f4e91]:
+          - heading "Buildings" [level=3] [ref=f4e92]
+          - generic [ref=f4e93]:
+            - generic [ref=f4e94]: Conveyor splitters
+            - generic [ref=f4e95]: "1"
+          - generic [ref=f4e96]:
+            - generic [ref=f4e97]: Conveyor mergers
+            - generic [ref=f4e98]: "0"
+        - generic [ref=f4e99]:
+          - heading "Belts (min tier per segment)" [level=3] [ref=f4e100]
+          - generic [ref=f4e101]:
+            - generic [ref=f4e103]:
+              - text: Mk.5
+              - generic [ref=f4e104]: · 780/min
+            - generic [ref=f4e105]: ×1
+          - generic [ref=f4e106]:
+            - generic [ref=f4e108]:
+              - text: Mk.4
+              - generic [ref=f4e109]: · 480/min
+            - generic [ref=f4e110]: ×2
+        - generic [ref=f4e111]:
+          - heading "Outputs" [level=3] [ref=f4e112]
+          - generic [ref=f4e113]:
+            - generic [ref=f4e114]: Output 1
+            - generic [ref=f4e115]: 390/min
+          - generic [ref=f4e116]:
+            - generic [ref=f4e117]: Output 2
+            - generic [ref=f4e118]: 390/min
+        - generic [ref=f4e119]:
+          - heading "Total input" [level=3] [ref=f4e120]
+          - generic [ref=f4e121]:
+            - generic [ref=f4e122]: Items / min
+            - generic [ref=f4e123]: 780/min
+          - generic [ref=f4e124]:
+            - generic [ref=f4e125]: Distributed
+            - generic [ref=f4e126]: 780/min
+        - button "Copy share link" [ref=f4e127]
+  - contentinfo [ref=f4e128]:
+    - generic [ref=f4e129]:
+      - text: Belt speeds & building behaviour per the
+      - link "Satisfactory wiki" [ref=f4e130] [cursor=pointer]:
+        - /url: https://satisfactory.wiki.gg
+      - text: . Not affiliated with Coffee Stain Studios.
+    - generic [ref=f4e131]:
+      - text: "AI disclosure: designed and built with AI assistance (opencode / GLM). See"
+      - link "the repo" [ref=f4e132] [cursor=pointer]:
+        - /url: https://github.com/reujdon/SatifactorySplitter
+      - text: .
