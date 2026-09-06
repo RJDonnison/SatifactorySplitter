@@ -36,8 +36,7 @@ npm run lint    # oxlint
 ## Deployment
 
 GitHub Pages via `.github/workflows/deploy.yml` — on push to `main` it runs
-the unit tests, builds, and publishes. Enable it once via
-**Settings → Pages → Source: GitHub Actions**.
+the unit tests, builds, and publishes.
 
 ## AI disclosure
 
