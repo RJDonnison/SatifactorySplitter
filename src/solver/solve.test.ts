@@ -197,6 +197,21 @@ describe('solve — approximation', () => {
     expect(ratesByTarget(s).out1).toBe(30)
     expect(verify(s).ok).toBe(true)
   })
+
+  it('780 -> 60,150,2 keeps the tap-able outputs exact and only snaps the 2', () => {
+    const s = S([780], [60, 150, 2])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(1)
+    const r = ratesByTarget(s)
+    expect(r.out1).toBe(60)
+    expect(r.out2).toBe(150)
+    expect(Math.abs(r.out3 - 2) / 2).toBeLessThanOrEqual(0.02)
+    expect(s.edges.some((e) => e.tapMk === 2)).toBe(true)
+    expect(
+      s.warnings.some((w) => w.text.includes('exceeds the requested')),
+    ).toBe(true)
+    expect(verify(s).ok).toBe(true)
+  })
 })
 
 describe('solve — errors', () => {

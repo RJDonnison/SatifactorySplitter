@@ -210,18 +210,45 @@ function approxWarnings(
   targets: TargetSpec[],
   approximate: boolean[],
   rates: Frac[],
+  tolerance: number,
 ): Warning[] {
   const out: Warning[] = []
   targets.forEach((t, i) => {
     if (approximate[i]) {
       const err = (Math.abs(F.toNumber(rates[i]) - t.rate) / t.rate) * 100
-      out.push({
-        level: 'warn',
-        text: `Output ${t.id}: ${t.rate}/min is not exactly constructible — snapped to ${formatFrac(rates[i])}/min (±${err.toFixed(2)}%). Raise the tolerance or tweak the rate.`,
-      })
+      if (err > tolerance * 100 + 1e-9) {
+        out.push({
+          level: 'warn',
+          text: `Output ${t.id}: ${t.rate}/min snapped to ${formatFrac(rates[i])}/min (±${err.toFixed(2)}%), which exceeds the requested ±${(tolerance * 100).toFixed(1)}% tolerance — meeting it exactly would need a very large splitter tree. Raise the tolerance or adjust the rate.`,
+        })
+      } else {
+        out.push({
+          level: 'warn',
+          text: `Output ${t.id}: ${t.rate}/min is not exactly constructible — snapped to ${formatFrac(rates[i])}/min (±${err.toFixed(2)}%). Raise the tolerance or tweak the rate.`,
+        })
+      }
     }
   })
   return out
+}
+
+/** Snap to the k/N grid, relaxing the tolerance in steps (2x, 5x, 10x, 25%)
+ * so a non-constructible tail never kills an otherwise exact design. */
+function snapWithFallback(
+  R: Frac,
+  tFr: Frac[],
+  tolerance: number,
+): { N: number; ks: number[] } | null {
+  const steps = [
+    ...new Set([tolerance, tolerance * 2, tolerance * 5, tolerance * 10, 0.25]),
+  ]
+    .filter((t) => t > 0)
+    .sort((a, b) => a - b)
+  for (const t of steps) {
+    const snap = chooseSnappedN(R, tFr, t)
+    if (snap) return snap
+  }
+  return null
 }
 
 /** Pure equal-split candidate (exact grid, or snapped within tolerance). */
@@ -240,7 +267,7 @@ function pureSplitSolution(
   if (exact) {
     ;({ N, ks } = exact)
   } else {
-    const snap = chooseSnappedN(Rf, tFr, tolerance)
+    const snap = snapWithFallback(Rf, tFr, tolerance)
     if (!snap) {
       notes.push({
         level: 'warn',
@@ -268,7 +295,7 @@ function pureSplitSolution(
   buildShareTree(b, tree, entry, leafPorts)
   const sinks = targets.map((t, i) => b.sink(t.id, rates[i], approximate[i]))
   targets.forEach((_, i) => b.mergeInto(leafPorts.get(i) ?? [], sinks[i]))
-  const warnings = approxWarnings(targets, approximate, rates)
+  const warnings = approxWarnings(targets, approximate, rates, tolerance)
   if (overflowK > 0) {
     const ovfRate = attachOverflow(b, leafPorts.get(ovfGid) ?? [], maxMk)
     warnings.push({
@@ -319,7 +346,7 @@ function tapSolution(
       tailN = exact.N
       tailKs = exact.ks
     } else {
-      const snap = chooseSnappedN(tailR, tailFr, tolerance)
+      const snap = snapWithFallback(tailR, tailFr, tolerance)
       if (!snap) return null
       tailN = snap.N
       tailKs = snap.ks
@@ -362,7 +389,7 @@ function tapSolution(
   const sinks = targets.map((t, i) => b.sink(t.id, rates[i], approximate[i]))
   targets.forEach((_, i) => b.mergeInto(leafPorts.get(i) ?? [], sinks[i]))
 
-  const warnings = approxWarnings(targets, approximate, rates)
+  const warnings = approxWarnings(targets, approximate, rates, tolerance)
   const ovfRate = F.sub(
     Rf,
     rates.reduce((a, r) => F.add(a, r), frac(0)),
