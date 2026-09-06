@@ -29,10 +29,7 @@ let nextId = 0
 const uid = () => `io${++nextId}`
 
 export const useStore = create<AppState>((set) => ({
-  inputs: [
-    { id: uid(), rate: 780, mk: 5 },
-    { id: uid(), rate: 0, mk: null },
-  ],
+  inputs: [{ id: uid(), rate: 780, mk: 5 }],
   outputs: [
     { id: uid(), rate: 390, mk: null },
     { id: uid(), rate: 390, mk: null },

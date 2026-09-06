@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { useStore } from './state/store'
 import { solve } from './solver/solve'
 import { Diagram } from './diagram/Diagram'
+import { IOEditor } from './components/IOEditor'
+import { Warnings } from './components/Warnings'
 
 export const REPO_URL = 'https://github.com/reujdon/SatifactorySplitter'
 
@@ -54,8 +56,9 @@ export default function App() {
       </header>
 
       <main className="flex min-h-0 flex-1">
-        <aside className="hidden w-72 shrink-0 border-r border-zinc-800 p-4 lg:block">
-          {/* IO editor (milestone 4) */}
+        <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 p-4 lg:flex">
+          <IOEditor />
+          <Warnings solution={solution} />
         </aside>
         <section className="relative min-w-0 flex-1 bg-zinc-950">
           <Diagram solution={solution} />
