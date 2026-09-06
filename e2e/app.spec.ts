@@ -62,3 +62,26 @@ test('max belt tier caps the design with a clear error', async ({ page }) => {
   await expect(page.getByText('260/min').first()).toBeVisible()
   await expect(page.getByText(/needs Mk\.4/i)).toHaveCount(0)
 })
+
+test.describe('small screens', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('side panels toggle as drawers', async ({ page }) => {
+    await page.goto('/')
+    const inputsHeading = page.getByRole('heading', {
+      name: 'Inputs',
+      level: 2,
+    })
+    await expect(inputsHeading).toBeHidden()
+
+    await page.getByRole('button', { name: 'Inputs', exact: true }).click()
+    await expect(inputsHeading).toBeVisible()
+    await page.getByRole('button', { name: 'Close inputs panel' }).click()
+    await expect(inputsHeading).toBeHidden()
+
+    await page.getByRole('button', { name: 'Summary', exact: true }).click()
+    await expect(page.getByText('Build summary').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Close summary panel' }).click()
+    await expect(page.getByText('Build summary').first()).toBeHidden()
+  })
+})

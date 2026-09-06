@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from './state/store'
 import { solve } from './solver/solve'
 import { Diagram } from './diagram/Diagram'
@@ -21,11 +21,23 @@ function GitHubIcon() {
   )
 }
 
+const panelToggle =
+  'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors aria-expanded:border-zinc-500 aria-expanded:bg-zinc-800 aria-expanded:text-zinc-100 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+
 export default function App() {
   const inputs = useStore((s) => s.inputs)
   const outputs = useStore((s) => s.outputs)
   const tolerance = useStore((s) => s.tolerance)
   const maxMk = useStore((s) => s.maxMk)
+
+  // panels default open on roomy screens, toggleable everywhere; on small
+  // screens they open as overlay drawers over the diagram
+  const [showInputs, setShowInputs] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 1024,
+  )
+  const [showSummary, setShowSummary] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 1280,
+  )
 
   // keep the URL in sync so a refresh or copy keeps the current problem
   // (initial state itself is restored from ?s= in the store)
@@ -46,7 +58,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <header className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">
             SF<span className="text-amber-400">/</span>Splitter
@@ -55,26 +67,77 @@ export default function App() {
             Satisfactory splitter &amp; belt planner
           </p>
         </div>
-        <a
-          href={REPO_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
-        >
-          <GitHubIcon />
-          GitHub
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={panelToggle}
+            aria-expanded={showInputs}
+            onClick={() => setShowInputs((v) => !v)}
+          >
+            Inputs
+          </button>
+          <button
+            type="button"
+            className={panelToggle}
+            aria-expanded={showSummary}
+            onClick={() => setShowSummary((v) => !v)}
+          >
+            Summary
+          </button>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
+          >
+            <GitHubIcon />
+            <span className="hidden sm:inline">GitHub</span>
+          </a>
+        </div>
       </header>
 
-      <main className="flex min-h-0 flex-1">
-        <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 p-4 lg:flex">
+      <main className="relative flex min-h-0 flex-1">
+        {showInputs && (
+          <div
+            className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+            onClick={() => setShowInputs(false)}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          className={`${showInputs ? 'flex' : 'hidden'} fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950 p-4 lg:static lg:z-auto lg:max-w-none lg:shrink-0`}
+        >
+          <div className="mb-3 flex items-center justify-between lg:hidden">
+            <span className="text-sm font-semibold text-zinc-300">Inputs</span>
+            <button
+              type="button"
+              aria-label="Close inputs panel"
+              onClick={() => setShowInputs(false)}
+              className="rounded-lg border border-zinc-800 px-2 py-0.5 text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+            >
+              ×
+            </button>
+          </div>
           <IOEditor />
           <Warnings solution={solution} />
         </aside>
         <section className="relative min-w-0 flex-1 bg-zinc-950">
           <Diagram solution={solution} />
         </section>
-        <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-zinc-800 p-4 xl:flex">
+        <aside
+          className={`${showSummary ? 'flex' : 'hidden'} fixed inset-y-0 right-0 z-40 w-72 max-w-[85vw] flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-4 lg:static lg:z-auto lg:max-w-none lg:shrink-0`}
+        >
+          <div className="mb-3 flex items-center justify-between lg:hidden">
+            <span className="text-sm font-semibold text-zinc-300">Summary</span>
+            <button
+              type="button"
+              aria-label="Close summary panel"
+              onClick={() => setShowSummary(false)}
+              className="rounded-lg border border-zinc-800 px-2 py-0.5 text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+            >
+              ×
+            </button>
+          </div>
           <Summary solution={solution} />
         </aside>
       </main>
