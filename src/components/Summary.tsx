@@ -3,6 +3,7 @@ import { F, formatFrac, frac } from '../solver/frac'
 import { speedOf } from '../solver/gameData'
 import type { Solution } from '../solver/types'
 import { BELT_HEX, BELT_LABELS } from '../diagram/belts'
+import { useStore } from '../state/store'
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -14,6 +15,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function Summary({ solution }: { solution: Solution }) {
+  const maxMk = useStore((s) => s.maxMk)
   const stats = useMemo(() => {
     const tapBelts = new Map<number, number>()
     let anyBelts = 0
@@ -21,11 +23,13 @@ export function Summary({ solution }: { solution: Solution }) {
       if (e.tapMk !== null) {
         tapBelts.set(e.tapMk, (tapBelts.get(e.tapMk) ?? 0) + 1)
       } else {
-        // only saturation taps need a specific tier; every other segment
-        // runs on any belt you have lying around
         anyBelts++
       }
     }
+    // non-tap segments have no tier requirement — class them as the highest
+    // tier you might bring so the shopping list never confuses
+    const maxTapMk = Math.max(0, ...tapBelts.keys())
+    const anyTier = Math.max(maxMk, maxTapMk)
     const overflowNodes = solution.nodes.filter(
       (n): n is Extract<typeof n, { kind: 'overflow' }> =>
         n.kind === 'overflow',
@@ -37,10 +41,11 @@ export function Summary({ solution }: { solution: Solution }) {
     return {
       tapBelts,
       anyBelts,
+      anyTier,
       overflowCount: overflowNodes.length,
       overflowRate: overflowNodes.length > 0 ? overflowRate : null,
     }
-  }, [solution])
+  }, [solution, maxMk])
 
   const [copied, setCopied] = useState(false)
   const share = async () => {
@@ -115,7 +120,13 @@ export function Summary({ solution }: { solution: Solution }) {
           ))}
         <div className="flex items-center gap-2 py-0.5">
           <span className="h-2 w-2 rounded-full bg-zinc-500" />
-          <span className="flex-1 text-zinc-400">Any belt</span>
+          <span className="flex-1 text-zinc-400">
+            Any belt
+            <span className="text-zinc-600">
+              {' '}
+              · up to {BELT_LABELS[stats.anyTier - 1]}
+            </span>
+          </span>
           <span className="font-medium tabular-nums text-zinc-200">
             ×{stats.anyBelts}
           </span>
