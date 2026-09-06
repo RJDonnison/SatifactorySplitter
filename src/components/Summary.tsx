@@ -15,24 +15,21 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export function Summary({ solution }: { solution: Solution }) {
   const stats = useMemo(() => {
-    const belts = new Map<number, number>()
+    const tapBelts = new Map<number, number>()
     let anyBelts = 0
-    let taps = 0
     for (const e of solution.edges) {
       if (e.tapMk !== null) {
-        belts.set(e.tapMk, (belts.get(e.tapMk) ?? 0) + 1)
-        taps++
-      } else if (e.minMk !== null && e.minMk > 1) {
-        belts.set(e.minMk, (belts.get(e.minMk) ?? 0) + 1)
+        tapBelts.set(e.tapMk, (tapBelts.get(e.tapMk) ?? 0) + 1)
       } else {
+        // only saturation taps need a specific tier; every other segment
+        // runs on any belt you have lying around
         anyBelts++
       }
     }
     const overflowNode = solution.nodes.find((n) => n.kind === 'overflow')
     return {
-      belts,
+      tapBelts,
       anyBelts,
-      taps,
       overflowRate:
         overflowNode && overflowNode.kind === 'overflow'
           ? overflowNode.rate
@@ -92,9 +89,9 @@ export function Summary({ solution }: { solution: Solution }) {
 
       <div>
         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
-          Belts (min tier per segment)
+          Belts
         </h3>
-        {[...stats.belts.entries()]
+        {[...stats.tapBelts.entries()]
           .sort((a, b) => b[0] - a[0])
           .map(([mk, count]) => (
             <div key={mk} className="flex items-center gap-2 py-0.5">
@@ -103,7 +100,7 @@ export function Summary({ solution }: { solution: Solution }) {
                 style={{ backgroundColor: BELT_HEX[mk - 1] }}
               />
               <span className="flex-1 text-zinc-400">
-                {BELT_LABELS[mk - 1]}
+                {BELT_LABELS[mk - 1]} tap
                 <span className="text-zinc-600"> · {speedOf(mk)}/min</span>
               </span>
               <span className="font-medium tabular-nums text-zinc-200">
@@ -111,20 +108,16 @@ export function Summary({ solution }: { solution: Solution }) {
               </span>
             </div>
           ))}
-        {stats.anyBelts > 0 && (
-          <div className="flex items-center gap-2 py-0.5">
-            <span className="h-2 w-2 rounded-full bg-zinc-500" />
-            <span className="flex-1 text-zinc-400">
-              Any belt<span className="text-zinc-600"> · ≤60/min</span>
-            </span>
-            <span className="font-medium tabular-nums text-zinc-200">
-              ×{stats.anyBelts}
-            </span>
-          </div>
-        )}
-        {stats.taps > 0 && (
+        <div className="flex items-center gap-2 py-0.5">
+          <span className="h-2 w-2 rounded-full bg-zinc-500" />
+          <span className="flex-1 text-zinc-400">Any belt</span>
+          <span className="font-medium tabular-nums text-zinc-200">
+            ×{stats.anyBelts}
+          </span>
+        </div>
+        {stats.tapBelts.size > 0 && (
           <p className="mt-1 text-xs text-zinc-500">
-            incl. {stats.taps} saturation tap{stats.taps > 1 ? 's' : ''}
+            Only saturation taps need their exact tier.
           </p>
         )}
       </div>

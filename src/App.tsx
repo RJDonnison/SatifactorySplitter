@@ -7,7 +7,7 @@ import { Warnings } from './components/Warnings'
 import { Summary } from './components/Summary'
 import { writeProblemToUrl } from './state/urlState'
 
-export const REPO_URL = 'https://github.com/reujdon/SatifactorySplitter'
+export const REPO_URL = 'https://github.com/RJDonnison/SatifactorySplitter'
 
 function GitHubIcon() {
   return (

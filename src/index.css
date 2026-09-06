@@ -8,8 +8,8 @@
   --color-belt-5: #fbbf24;
   --color-belt-6: #f87171;
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
 }
 
 html,
@@ -50,16 +50,22 @@ input[type='number'] {
   box-shadow: none;
 }
 .react-flow__controls-button {
-  background: #18181b;
-  border-bottom: 1px solid #27272a;
-  fill: #a1a1aa;
+  background: #18181b !important;
+  border-bottom: 1px solid #27272a !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+.react-flow__controls-button svg {
+  fill: #d4d4d8 !important;
 }
 .react-flow__controls-button:hover {
-  background: #27272a;
+  background: #27272a !important;
 }
 .react-flow__attribution {
-  background: transparent;
-  color: #3f3f46;
+  background: transparent !important;
+}
+.react-flow__attribution a {
+  color: #52525b !important;
 }
 .react-flow__edge-textbg {
   fill: #09090b;

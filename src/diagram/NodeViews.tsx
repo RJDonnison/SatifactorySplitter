@@ -103,12 +103,15 @@ function SplitterView({ data }: NodeProps<Node<SplitterData, 'splitter'>>) {
       </svg>
       <div className="flex flex-col gap-1.5">
         {data.ports.map((p, i) => (
-          <span
-            key={i}
-            className="h-1.5 w-4 rounded-full"
-            style={{ backgroundColor: p.hex }}
-            title={p.tapMk ? `Mk.${p.tapMk} tap` : 'open port'}
-          />
+          <span key={i} className="group relative flex items-center">
+            <span
+              className="block h-1.5 w-4 rounded-full"
+              style={{ backgroundColor: p.hex }}
+            />
+            <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-2 -translate-y-1/2 whitespace-nowrap rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200 opacity-0 shadow-lg shadow-black/50 group-hover:opacity-100">
+              {p.tapMk ? `Mk.${p.tapMk} tap` : 'open port'}
+            </span>
+          </span>
         ))}
       </div>
       {data.ports.map((p, i) => (
