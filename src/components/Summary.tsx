@@ -26,14 +26,19 @@ export function Summary({ solution }: { solution: Solution }) {
         anyBelts++
       }
     }
-    const overflowNode = solution.nodes.find((n) => n.kind === 'overflow')
+    const overflowNodes = solution.nodes.filter(
+      (n): n is Extract<typeof n, { kind: 'overflow' }> =>
+        n.kind === 'overflow',
+    )
+    const overflowRate = overflowNodes.reduce(
+      (acc, n) => F.add(acc, n.rate),
+      frac(0),
+    )
     return {
       tapBelts,
       anyBelts,
-      overflowRate:
-        overflowNode && overflowNode.kind === 'overflow'
-          ? overflowNode.rate
-          : null,
+      overflowCount: overflowNodes.length,
+      overflowRate: overflowNodes.length > 0 ? overflowRate : null,
     }
   }, [solution])
 
@@ -135,7 +140,7 @@ export function Summary({ solution }: { solution: Solution }) {
         ))}
         {stats.overflowRate && (
           <Row
-            label="Overflow"
+            label={`Overflow${stats.overflowCount > 1 ? ` (${stats.overflowCount} belts)` : ''}`}
             value={`${formatFrac(stats.overflowRate)}/min`}
           />
         )}

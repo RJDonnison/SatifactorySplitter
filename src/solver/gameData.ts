@@ -7,9 +7,12 @@ export function speedOf(mk: number): number {
   return BELT_SPEEDS[mk - 1]
 }
 
-/** Smallest belt Mk whose throughput fits `rate`; null if even Mk.6 is too slow. */
-export function minMkFor(rate: Frac): number | null {
-  for (let mk = 1; mk <= BELT_SPEEDS.length; mk++) {
+/** Smallest belt Mk up to `maxMk` whose throughput fits `rate`; null if none does. */
+export function minMkFor(
+  rate: Frac,
+  maxMk: number = BELT_SPEEDS.length,
+): number | null {
+  for (let mk = 1; mk <= maxMk; mk++) {
     if (F.cmp(frac(BELT_SPEEDS[mk - 1]), rate) >= 0) return mk
   }
   return null

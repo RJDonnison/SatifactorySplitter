@@ -25,12 +25,13 @@ export default function App() {
   const inputs = useStore((s) => s.inputs)
   const outputs = useStore((s) => s.outputs)
   const tolerance = useStore((s) => s.tolerance)
+  const maxMk = useStore((s) => s.maxMk)
 
   // keep the URL in sync so a refresh or copy keeps the current problem
   // (initial state itself is restored from ?s= in the store)
   useEffect(() => {
-    writeProblemToUrl({ inputs, outputs, tolerance })
-  }, [inputs, outputs, tolerance])
+    writeProblemToUrl({ inputs, outputs, tolerance, maxMk })
+  }, [inputs, outputs, tolerance, maxMk])
 
   const solution = useMemo(
     () =>
@@ -38,8 +39,9 @@ export default function App() {
         inputs: inputs.map((i) => i.rate),
         outputs: outputs.map((o) => ({ id: o.id, rate: o.rate })),
         tolerance,
+        maxMk,
       }),
-    [inputs, outputs, tolerance],
+    [inputs, outputs, tolerance, maxMk],
   )
 
   return (

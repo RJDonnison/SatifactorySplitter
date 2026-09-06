@@ -36,40 +36,121 @@ export function solve(input: SolveInput): Solution {
     )
 
   const Rf = frac(totalIn)
+  const maxMk = Math.min(6, Math.max(1, Math.round(input.maxMk ?? 6)))
   const notes: Warning[] = []
-  const candidates: Solution[] = []
 
-  const pure = pureSplitSolution(
+  const candidates = buildCandidates(
     inputRates,
     Rf,
     targets,
     input.tolerance,
+    maxMk,
+    notes,
+  )
+  const best = candidates
+    .filter((c) => verify(c, maxMk).ok)
+    .sort((a, b) => cmpSolution(a, b))[0]
+
+  if (best) {
+    best.warnings.unshift(...notes)
+    return best
+  }
+
+  if (candidates.length > 0) {
+    const capBlocked = candidates.some((c) =>
+      verify(c, maxMk).issues.some((i) => i.includes('exceeds the max belt')),
+    )
+    if (capBlocked) {
+      for (let mk = 1; mk <= 6; mk++) {
+        const alt = buildCandidates(
+          inputRates,
+          Rf,
+          targets,
+          input.tolerance,
+          mk,
+          [],
+        )
+        if (alt.some((c) => verify(c, mk).ok)) {
+          return fail(
+            `Not solvable with belts up to Mk.${maxMk} — the fastest segment needs Mk.${mk} belts. Raise the max belt Mk or lower the rates.`,
+          )
+        }
+      }
+    }
+    const issues = candidates.flatMap((c) => verify(c, maxMk).issues)
+    return fail(
+      `Internal error: candidate networks failed verification (${issues[0] ?? '?'})`,
+    )
+  }
+  return fail(
+    notes.find((w) => w.level === 'warn')?.text ??
+      'No constructible solution within tolerance — try raising the tolerance.',
+  )
+}
+
+function buildCandidates(
+  inputRates: number[],
+  Rf: Frac,
+  targets: TargetSpec[],
+  tolerance: number,
+  maxMk: number,
+  notes: Warning[],
+): Solution[] {
+  const candidates: Solution[] = []
+  const pure = pureSplitSolution(
+    inputRates,
+    Rf,
+    targets,
+    tolerance,
+    maxMk,
     notes,
   )
   if (pure) candidates.push(pure)
   for (const allowPair of [true, false]) {
-    const tap = tapSolution(inputRates, Rf, targets, input.tolerance, allowPair)
+    const tap = tapSolution(
+      inputRates,
+      Rf,
+      targets,
+      tolerance,
+      maxMk,
+      allowPair,
+    )
     if (tap) candidates.push(tap)
   }
+  return candidates
+}
 
-  const best = candidates
-    .filter((c) => verify(c).ok)
-    .sort((a, b) => cmpSolution(a, b))[0]
-
-  if (!best) {
-    if (candidates.length > 0) {
-      const issues = candidates.flatMap((c) => verify(c).issues)
-      return fail(
-        `Internal error: candidate networks failed verification (${issues[0] ?? '?'})`,
-      )
+/** Split overflow belt ends into bins that each fit the max belt Mk
+ * (first-fit decreasing); a single oversized end stays on its own belt so
+ * verification flags it. Returns the total overflow rate. */
+function attachOverflow(b: NetBuilder, ends: BeltEnd[], maxMk: number): Frac {
+  const total = ends.reduce((a, e) => F.add(a, e.rate), frac(0))
+  if (ends.length === 0) return total
+  const cap = frac(speedOf(maxMk))
+  const sorted = [...ends].sort((a, c) => F.cmp(c.rate, a.rate))
+  const bins: BeltEnd[][] = []
+  const sums: Frac[] = []
+  for (const e of sorted) {
+    let placed = false
+    for (let i = 0; i < bins.length; i++) {
+      if (F.cmp(F.add(sums[i], e.rate), cap) <= 0) {
+        bins[i].push(e)
+        sums[i] = F.add(sums[i], e.rate)
+        placed = true
+        break
+      }
     }
-    return fail(
-      notes.find((w) => w.level === 'warn')?.text ??
-        'No constructible solution within tolerance — try raising the tolerance.',
-    )
+    if (!placed) {
+      bins.push([e])
+      sums.push(e.rate)
+    }
   }
-  best.warnings.unshift(...notes)
-  return best
+  for (let i = 0; i < bins.length; i++) {
+    const ovf = b.overflowNode()
+    b.mergeInto(bins[i], ovf.id)
+    ovf.setRate(sums[i])
+  }
+  return total
 }
 
 function cmpSolution(a: Solution, b: Solution): number {
@@ -149,6 +230,7 @@ function pureSplitSolution(
   Rf: Frac,
   targets: TargetSpec[],
   tolerance: number,
+  maxMk: number,
   notes: Warning[],
 ): Solution | null {
   const tFr = targets.map((t) => frac(t.rate))
@@ -171,7 +253,7 @@ function pureSplitSolution(
   const rates = ks.map((k) => shareRate(k, Rf, N))
   const approximate = targets.map((t, i) => !F.eq(rates[i], frac(t.rate)))
 
-  const b = new NetBuilder()
+  const b = new NetBuilder(maxMk)
   const entry = buildTrunk(b, inputRates)
   const ovfGid = targets.length
   const overflowK = N - ks.reduce((a, c) => a + c, 0)
@@ -188,10 +270,7 @@ function pureSplitSolution(
   targets.forEach((_, i) => b.mergeInto(leafPorts.get(i) ?? [], sinks[i]))
   const warnings = approxWarnings(targets, approximate, rates)
   if (overflowK > 0) {
-    const ovfRate = shareRate(overflowK, Rf, N)
-    const ovf = b.overflowNode()
-    b.mergeInto(leafPorts.get(ovfGid) ?? [], ovf.id)
-    ovf.setRate(ovfRate)
+    const ovfRate = attachOverflow(b, leafPorts.get(ovfGid) ?? [], maxMk)
     warnings.push({
       level: 'info',
       text: `${formatFrac(ovfRate)}/min surplus is routed to an overflow belt.`,
@@ -208,9 +287,10 @@ function tapSolution(
   Rf: Frac,
   targets: TargetSpec[],
   tolerance: number,
+  maxMk: number,
   allowPair: boolean,
 ): Solution | null {
-  const decompByGid = targets.map((t) => decomposeTarget(t.rate))
+  const decompByGid = targets.map((t) => decomposeTarget(t.rate, maxMk))
   if (!decompByGid.some((c) => c !== null)) return null
   const plan = planTapChain(Rf, decompByGid, allowPair)
   if (!plan) return null
@@ -246,7 +326,7 @@ function tapSolution(
     }
   }
 
-  const b = new NetBuilder()
+  const b = new NetBuilder(maxMk)
   const entry = buildTrunk(b, inputRates)
   const leafPorts = new Map<number, BeltEnd[]>()
   const ovfGid = targets.length
@@ -288,12 +368,14 @@ function tapSolution(
     rates.reduce((a, r) => F.add(a, r), frac(0)),
   )
   if (!F.isZero(ovfRate)) {
-    const ovf = b.overflowNode()
-    b.mergeInto([...overflowEnds, ...(leafPorts.get(ovfGid) ?? [])], ovf.id)
-    ovf.setRate(ovfRate)
+    const total = attachOverflow(
+      b,
+      [...overflowEnds, ...(leafPorts.get(ovfGid) ?? [])],
+      maxMk,
+    )
     warnings.push({
       level: 'info',
-      text: `${formatFrac(ovfRate)}/min surplus is routed to an overflow belt.`,
+      text: `${formatFrac(total)}/min surplus is routed to an overflow belt.`,
     })
   }
   if (plan.steps.length > 0) {

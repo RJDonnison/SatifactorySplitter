@@ -13,6 +13,19 @@ const S = (inputs: number[], outputs: number[], tolerance = 0.01): Solution =>
     tolerance,
   })
 
+const Smax = (
+  inputs: number[],
+  outputs: number[],
+  maxMk: number,
+  tolerance = 0.01,
+): Solution =>
+  solve({
+    inputs,
+    outputs: outputs.map((rate, i) => ({ id: `out${i + 1}`, rate })),
+    tolerance,
+    maxMk,
+  })
+
 function sinksOf(s: Solution) {
   return s.nodes.filter((n) => n.kind === 'sink') as Extract<
     (typeof s.nodes)[number],
@@ -201,5 +214,43 @@ describe('solve — errors', () => {
   it('rejects empty problems', () => {
     expect(S([], [60]).ok).toBe(false)
     expect(S([60], []).ok).toBe(false)
+  })
+})
+
+describe('solve — max belt Mk cap', () => {
+  it('coin decomps respect the cap', () => {
+    expect(coinDecomp(180, 2)).toEqual([120, 60])
+    expect(coinDecomp(180, 1)).toEqual([60, 60, 60])
+    expect(coinDecomp(150, 1)).toBeNull()
+  })
+
+  it('780 -> 260 x3 stays solvable at max Mk.3 (input belt is exempt)', () => {
+    const s = Smax([780], [260, 260, 260], 3)
+    expect(s.ok).toBe(true)
+    expect(s.buildings.splitters).toBe(1)
+    for (const e of s.edges) {
+      if (e.tapMk === null && e.src.startsWith('src')) continue
+      expect(e.minMk === null || e.minMk <= 3).toBe(true)
+    }
+    expect(verify(s, 3).ok).toBe(true)
+  })
+
+  it('780 -> 390,390 at max Mk.3 errors with a minimum-workable-tier hint', () => {
+    const s = Smax([780], [390, 390], 3)
+    expect(s.ok).toBe(false)
+    const msg = s.warnings.find((w) => w.level === 'error')?.text ?? ''
+    expect(msg).toContain('Mk.4')
+  })
+
+  it('240 -> 60,60,120 at max Mk.1 errors (120/min segments need Mk.2)', () => {
+    const s = Smax([240], [60, 60, 120], 1)
+    expect(s.ok).toBe(false)
+    const msg = s.warnings.find((w) => w.level === 'error')?.text ?? ''
+    expect(msg).toContain('Mk.2')
+  })
+
+  it('caps multi-input trunks (merged trunk is a placed belt)', () => {
+    const s = Smax([480, 480], [960], 4)
+    expect(s.ok).toBe(false)
   })
 })

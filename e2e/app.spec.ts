@@ -47,3 +47,18 @@ test('shows an error when outputs exceed input', async ({ page }) => {
   await spinbuttons.nth(2).fill('600')
   await expect(page.getByText(/exceed the input/i).first()).toBeVisible()
 })
+
+test('max belt tier caps the design with a clear error', async ({ page }) => {
+  // default problem is 780 -> 390 + 390, which needs Mk.4 segments
+  await page.getByRole('button', { name: 'Set max belt Mk.3' }).click()
+  await expect(page.getByText(/needs Mk\.4/i).first()).toBeVisible()
+
+  // 260 x 3 fits under Mk.3 (the 780 input belt itself is exempt)
+  const spinbuttons = page.getByRole('spinbutton')
+  await spinbuttons.nth(1).fill('260')
+  await spinbuttons.nth(2).fill('260')
+  await page.getByRole('button', { name: '+ Add output belt' }).click()
+  await spinbuttons.nth(3).fill('260')
+  await expect(page.getByText('260/min').first()).toBeVisible()
+  await expect(page.getByText(/needs Mk\.4/i)).toHaveCount(0)
+})

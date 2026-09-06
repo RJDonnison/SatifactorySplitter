@@ -12,13 +12,14 @@ import { NetBuilder, type BeltEnd } from './net'
  */
 
 /** Minimum-count coin change over belt speeds; descending coins, or null. */
-export function coinDecomp(t: number): number[] | null {
-  if (!Number.isInteger(t) || t < BELT_SPEEDS[0]) return null
+export function coinDecomp(t: number, maxMk = 6): number[] | null {
+  const speeds = BELT_SPEEDS.filter((_, i) => i < maxMk)
+  if (!Number.isInteger(t) || t < speeds[0]) return null
   const INF = Number.POSITIVE_INFINITY
   const cnt = new Array<number>(t + 1).fill(INF)
   cnt[0] = 0
-  for (let v = BELT_SPEEDS[0]; v <= t; v++) {
-    for (const c of BELT_SPEEDS) {
+  for (let v = speeds[0]; v <= t; v++) {
+    for (const c of speeds) {
       if (c > v) continue
       if (cnt[v - c] + 1 < cnt[v]) cnt[v] = cnt[v - c] + 1
     }
@@ -27,8 +28,8 @@ export function coinDecomp(t: number): number[] | null {
   const coins: number[] = []
   let v = t
   while (v > 0) {
-    for (let i = BELT_SPEEDS.length - 1; i >= 0; i--) {
-      const c = BELT_SPEEDS[i]
+    for (let i = speeds.length - 1; i >= 0; i--) {
+      const c = speeds[i]
       if (c <= v && cnt[v - c] === cnt[v] - 1) {
         coins.push(c)
         v -= c
@@ -74,19 +75,19 @@ const bgcd = (a: number, b: number): number => (b ? bgcd(b, a % b) : a)
  * 60 tap). Exact coin-only decompositions are preferred; otherwise the
  * cheapest piece (fewest buildings, least waste) wins.
  */
-export function decomposeTarget(t: number): TargetDecomp | null {
+export function decomposeTarget(t: number, maxMk = 6): TargetDecomp | null {
   if (!Number.isInteger(t) || t <= 0) return null
-  const exact = coinDecomp(t)
+  const exact = coinDecomp(t, maxMk)
   if (exact) return { coins: exact, piece: null, cost: exact.length, waste: 0 }
   let best: TargetDecomp | null = null
-  for (const c of BELT_SPEEDS) {
+  for (const c of BELT_SPEEDS.filter((_, i) => i < maxMk)) {
     for (const d of [2, 3, 4, 6]) {
       for (let k = 1; k < d; k++) {
         if (bgcd(k, d) !== 1) continue // reducible form
         const v = (c * k) / d
         if (!Number.isInteger(v) || v > t) continue
         const rest = t - v
-        const coins = rest === 0 ? [] : coinDecomp(rest)
+        const coins = rest === 0 ? [] : coinDecomp(rest, maxMk)
         if (coins === null) continue
         const splitCost = d <= 3 ? 1 : 2
         const mergeCost = Math.ceil((k - 1) / 2)

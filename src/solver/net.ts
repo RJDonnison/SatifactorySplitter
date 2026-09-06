@@ -18,6 +18,17 @@ export interface BeltEnd {
 export class NetBuilder {
   readonly nodes: NetNode[] = []
   readonly edges: NetEdge[] = []
+  /** highest belt Mk this design may place; edges leaving source nodes are
+   * exempt (they are the player's existing input belts). */
+  readonly maxMk: number
+
+  constructor(maxMk = 6) {
+    this.maxMk = maxMk
+  }
+
+  private kindOf(id: string): NetNode['kind'] | undefined {
+    return this.nodes.find((n) => n.id === id)?.kind
+  }
 
   source(rate: Frac): string {
     const id = nid('src')
@@ -59,6 +70,7 @@ export class NetBuilder {
     tapMk: number | null = null,
   ): string {
     const id = nid('e')
+    const exempt = this.kindOf(src) === 'source'
     this.edges.push({
       id,
       src,
@@ -66,7 +78,7 @@ export class NetBuilder {
       dst,
       dstPort,
       rate,
-      minMk: minMkFor(rate),
+      minMk: exempt ? minMkFor(rate) : minMkFor(rate, this.maxMk),
       tapMk,
     })
     return id

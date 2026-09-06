@@ -14,6 +14,8 @@ export interface Problem {
   outputs: IOBelt[]
   /** snap tolerance for non-constructible ratios, as a fraction (0.01 = 1%) */
   tolerance: number
+  /** highest belt Mark the design may place (input belts are exempt) */
+  maxMk: number
 }
 
 interface AppState extends Problem {
@@ -24,6 +26,7 @@ interface AppState extends Problem {
   removeOutput: (id: string) => void
   setOutput: (id: string, patch: Partial<Omit<IOBelt, 'id'>>) => void
   setTolerance: (t: number) => void
+  setMaxMk: (mk: number) => void
 }
 
 let nextId = 0
@@ -36,6 +39,7 @@ const defaultProblem: Problem = {
     { id: uid(), rate: 390, mk: null },
   ],
   tolerance: 0.01,
+  maxMk: 6,
 }
 
 /** initial state: a shared problem from ?s= if present, else the default demo */
@@ -45,6 +49,7 @@ export const useStore = create<AppState>((set) => ({
   inputs: initialProblem.inputs,
   outputs: initialProblem.outputs,
   tolerance: initialProblem.tolerance,
+  maxMk: initialProblem.maxMk,
   addInput: () =>
     set((s) => ({ inputs: [...s.inputs, { id: uid(), rate: 60, mk: null }] })),
   removeInput: (id) =>
@@ -64,10 +69,12 @@ export const useStore = create<AppState>((set) => ({
       outputs: s.outputs.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     })),
   setTolerance: (t) => set({ tolerance: t }),
+  setMaxMk: (mk) => set({ maxMk: Math.min(6, Math.max(1, Math.round(mk))) }),
 }))
 
 export const selectProblem = (s: AppState): Problem => ({
   inputs: s.inputs,
   outputs: s.outputs,
   tolerance: s.tolerance,
+  maxMk: s.maxMk,
 })

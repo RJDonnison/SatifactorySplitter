@@ -1,4 +1,4 @@
-import { F, frac, type Frac } from './frac'
+import { F, frac, formatFrac, type Frac } from './frac'
 import { minMkFor, speedOf } from './gameData'
 import type { PortSpec, Solution } from './types'
 
@@ -44,7 +44,7 @@ export function portRates(
 }
 
 /** Re-simulate the network and check every invariant. */
-export function verify(sol: Solution): VerifyResult {
+export function verify(sol: Solution, maxMk = 6): VerifyResult {
   const issues: string[] = []
   const bad = (msg: string) => issues.push(msg)
   const outs = new Map<string, typeof sol.edges>()
@@ -58,10 +58,17 @@ export function verify(sol: Solution): VerifyResult {
   const nodeById = new Map(sol.nodes.map((n) => [n.id, n]))
 
   for (const e of sol.edges) {
-    if (!nodeById.has(e.src) || !nodeById.has(e.dst))
+    const srcNode = nodeById.get(e.src)
+    if (!srcNode || !nodeById.has(e.dst))
       bad(`edge ${e.id} references missing node`)
-    if (e.minMk !== minMkFor(e.rate))
+    const expect =
+      srcNode?.kind === 'source' ? minMkFor(e.rate) : minMkFor(e.rate, maxMk)
+    if (e.minMk !== expect)
       bad(`edge ${e.id} belt tier is not the minimum for its rate`)
+    if (expect === null)
+      bad(
+        `edge ${e.id} rate ${formatFrac(e.rate)}/min exceeds the max belt Mk.${maxMk} capacity`,
+      )
     if (e.tapMk !== null && !F.eq(e.rate, frac(speedOf(e.tapMk))))
       bad(`edge ${e.id} tap belt does not match its rate`)
   }

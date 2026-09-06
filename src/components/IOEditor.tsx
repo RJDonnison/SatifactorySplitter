@@ -92,6 +92,7 @@ export function IOEditor() {
   const inputs = useStore((s) => s.inputs)
   const outputs = useStore((s) => s.outputs)
   const tolerance = useStore((s) => s.tolerance)
+  const maxMk = useStore((s) => s.maxMk)
   const addInput = useStore((s) => s.addInput)
   const removeInput = useStore((s) => s.removeInput)
   const setInput = useStore((s) => s.setInput)
@@ -99,6 +100,7 @@ export function IOEditor() {
   const removeOutput = useStore((s) => s.removeOutput)
   const setOutput = useStore((s) => s.setOutput)
   const setTolerance = useStore((s) => s.setTolerance)
+  const setMaxMk = useStore((s) => s.setMaxMk)
 
   const totalIn = inputs.reduce((a, b) => a + b.rate, 0)
   const totalOut = outputs.reduce((a, b) => a + b.rate, 0)
@@ -209,6 +211,47 @@ export function IOEditor() {
           Some ratios (e.g. exactly 1/5) cannot be built from equal splits and
           belt taps — those outputs snap to the nearest achievable rate within
           this tolerance.
+        </p>
+      </section>
+
+      <section>
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+            Max belt tier
+          </h2>
+          <span className="text-xs tabular-nums text-zinc-500">
+            up to {BELT_LABELS[maxMk - 1]}
+          </span>
+        </div>
+        <div
+          className="flex items-center gap-1.5"
+          role="group"
+          aria-label="Max belt tier"
+        >
+          {BELT_LABELS.map((label, i) => {
+            const mk = i + 1
+            const active = mk === maxMk
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-label={`Set max belt ${label}`}
+                aria-pressed={active}
+                onClick={() => setMaxMk(mk)}
+                className={`h-6 flex-1 rounded-md border text-[11px] font-semibold tabular-nums transition-colors ${
+                  active
+                    ? 'border-zinc-400 bg-zinc-700 text-zinc-100'
+                    : 'border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                {mk}
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          Every belt the design places (including taps and overflow) fits this
+          tier. Your input belts are exempt.
         </p>
       </section>
     </div>

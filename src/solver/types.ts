@@ -65,6 +65,7 @@ export interface TargetSpec {
 export interface SolveInput {
   inputs: number[]
   outputs: TargetSpec[]
-  /** snap tolerance for non-constructible ratios as a fraction (0.01 = 1%) */
   tolerance: number
+  /** highest belt Mark the design may place (input belts are exempt); default 6 */
+  maxMk?: number
 }

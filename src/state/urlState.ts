@@ -4,6 +4,7 @@ interface Packed {
   i: number[]
   o: number[]
   t: number
+  m?: number
 }
 
 const toB64Url = (s: string): string =>
@@ -17,6 +18,7 @@ export function encodeProblem(p: Problem): string {
     i: p.inputs.map((b) => b.rate),
     o: p.outputs.map((b) => b.rate),
     t: p.tolerance,
+    m: p.maxMk,
   }
   return toB64Url(JSON.stringify(packed))
 }
@@ -41,6 +43,10 @@ export function decodeProblem(code: string): Problem | null {
       })),
       tolerance:
         typeof raw.t === 'number' && raw.t > 0 && raw.t <= 0.05 ? raw.t : 0.01,
+      maxMk:
+        typeof raw.m === 'number' && raw.m >= 1 && raw.m <= 6
+          ? Math.round(raw.m)
+          : 6,
     }
   } catch {
     return null
