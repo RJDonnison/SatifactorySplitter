@@ -212,6 +212,25 @@ describe('solve — approximation', () => {
     ).toBe(true)
     expect(verify(s).ok).toBe(true)
   })
+
+  it('780 -> 50 is exact via two split Mk.1 taps (30 + 20 merged)', () => {
+    const s = S([780], [50])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(ratesByTarget(s).out1).toBe(50)
+    // two piece taps, both on 60/min Mk.1 belts
+    const pieceTaps = s.edges.filter((e) => e.tapMk === 1)
+    expect(pieceTaps.length).toBeGreaterThanOrEqual(2)
+    expect(verify(s).ok).toBe(true)
+  })
+
+  it('780 -> 110 is exact via mixed-tier piece taps (90 + 20 merged)', () => {
+    const s = S([780], [110])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(ratesByTarget(s).out1).toBe(110)
+    expect(verify(s).ok).toBe(true)
+  })
 })
 
 describe('solve — errors', () => {

@@ -52,61 +52,125 @@ export interface PieceSpec {
   c: number
   /** shares taken for the target */
   k: number
-  /** total shares (2, 3, 4 or 6) */
+  /** total shares (a 2^a * 3^b count) */
   d: number
 }
 
 export interface TargetDecomp {
   /** full belt-speed taps */
   coins: number[]
-  /** optional fractional refinement of one tap */
-  piece: PieceSpec | null
+  /** fractional refinements: tapped belts that are split again */
+  pieces: PieceSpec[]
   /** rough building cost used to pick between decompositions */
   cost: number
-  /** leftover flow the piece split pushes to overflow */
+  /** leftover flow the piece splits push to overflow */
   waste: number
 }
 
 const bgcd = (a: number, b: number): number => (b ? bgcd(b, a % b) : a)
 
-/**
- * Decompose a target rate into belt-speed taps plus at most one fractional
- * piece: a tapped belt that is split again (e.g. 150 = 120 tap + half of a
- * 60 tap). Exact coin-only decompositions are preferred; otherwise the
- * cheapest piece (fewest buildings, least waste) wins.
- */
-export function decomposeTarget(t: number, maxMk = 6): TargetDecomp | null {
-  if (!Number.isInteger(t) || t <= 0) return null
-  const exact = coinDecomp(t, maxMk)
-  if (exact) return { coins: exact, piece: null, cost: exact.length, waste: 0 }
-  let best: TargetDecomp | null = null
-  for (const c of BELT_SPEEDS.filter((_, i) => i < maxMk)) {
-    for (const d of [2, 3, 4, 6]) {
+/** split-tree sizes a tapped belt may be divided into (2^a * 3^b leaves) */
+const PIECE_DIVS = [
+  2, 3, 4, 6, 8, 9, 12, 16, 18, 24, 27, 32, 36, 48, 54, 64, 72, 81,
+]
+
+/** splitters needed for a uniform d-leaf split tree */
+const splitCost = (d: number): number =>
+  d === 1 ? 0 : 1 + splitCost(d % 3 === 0 ? d / 3 : d / 2)
+
+interface Part {
+  /** amount this part contributes to the target */
+  v: number
+  cost: number
+  waste: number
+  coin?: number
+  piece?: PieceSpec
+}
+
+function partUniverse(maxMk: number): Part[] {
+  const speeds = BELT_SPEEDS.filter((_, i) => i < maxMk)
+  const parts: Part[] = speeds.map((c) => ({
+    v: c,
+    cost: 1,
+    waste: 0,
+    coin: c,
+  }))
+  for (const c of speeds) {
+    for (const d of PIECE_DIVS) {
       for (let k = 1; k < d; k++) {
         if (bgcd(k, d) !== 1) continue // reducible form
         const v = (c * k) / d
-        if (!Number.isInteger(v) || v > t) continue
-        const rest = t - v
-        const coins = rest === 0 ? [] : coinDecomp(rest, maxMk)
-        if (coins === null) continue
-        const splitCost = d <= 3 ? 1 : 2
-        const mergeCost = Math.ceil((k - 1) / 2)
-        const cand: TargetDecomp = {
-          coins,
-          piece: { c, k, d },
-          cost: coins.length + 1 + splitCost + mergeCost,
+        if (!Number.isInteger(v)) continue
+        parts.push({
+          v,
+          cost: 1 + splitCost(d) + Math.ceil((k - 1) / 2),
           waste: c - v,
-        }
-        if (
-          !best ||
-          cand.cost < best.cost ||
-          (cand.cost === best.cost && cand.waste < best.waste)
-        )
-          best = cand
+          piece: { c, k, d },
+        })
       }
     }
   }
-  return best
+  return parts
+}
+
+/**
+ * Decompose a target rate into belt-speed taps plus any number of fractional
+ * pieces (tapped belts that are split again, e.g. 150 = 120 tap + half of a
+ * 60 tap, or 50 = half of a 60 tap + a third of a 60 tap). A small DP finds
+ * the cheapest decomposition; leftover piece flow drains to overflow.
+ */
+export function decomposeTarget(t: number, maxMk = 6): TargetDecomp | null {
+  if (!Number.isInteger(t) || t <= 0) return null
+  const parts = partUniverse(maxMk)
+  interface Node {
+    cost: number
+    waste: number
+    n: number
+    prev: number
+    part: Part | null
+  }
+  const dp: (Node | null)[] = new Array(t + 1).fill(null)
+  dp[0] = { cost: 0, waste: 0, n: 0, prev: -1, part: null }
+  const better = (a: Node | null, b: Node) =>
+    !a ||
+    b.cost < a.cost ||
+    (b.cost === a.cost &&
+      (b.waste < a.waste || (b.waste === a.waste && b.n < a.n)))
+  for (let a = 1; a <= t; a++) {
+    let best: Node | null = null
+    for (const p of parts) {
+      if (p.v > a) continue
+      const prev = dp[a - p.v]
+      if (!prev || prev.n >= 5) continue // keep chains buildable
+      const cand: Node = {
+        cost: prev.cost + p.cost,
+        waste: prev.waste + p.waste,
+        n: prev.n + 1,
+        prev: a - p.v,
+        part: p,
+      }
+      if (better(best, cand)) best = cand
+    }
+    dp[a] = best
+  }
+  const end = dp[t]
+  if (!end) return null
+  const coins: number[] = []
+  const pieces: PieceSpec[] = []
+  let partsUsed = 0
+  let cur = end
+  while (cur.part) {
+    partsUsed++
+    if (cur.part.coin !== undefined) coins.push(cur.part.coin)
+    if (cur.part.piece) pieces.push(cur.part.piece)
+    cur = dp[cur.prev]!
+  }
+  return {
+    coins,
+    pieces,
+    cost: end.cost + Math.ceil((partsUsed - 1) / 2),
+    waste: end.waste,
+  }
 }
 
 export type TapStep =
@@ -145,13 +209,13 @@ export function planTapChain(
     const active = eligible.filter((e) => !dropped.has(e.gid))
     if (active.length === 0) return null
     const maxC = (d: TargetDecomp) =>
-      Math.max(0, ...d.coins, d.piece ? d.piece.c : 0)
+      Math.max(0, ...d.coins, ...d.pieces.map((p) => p.c))
     const order = [...active].sort(
       (a, b) =>
         maxC(b.d) - maxC(a.d) ||
         b.d.coins.length +
-          (b.d.piece ? 1 : 0) -
-          (a.d.coins.length + (a.d.piece ? 1 : 0)) ||
+          b.d.pieces.length -
+          (a.d.coins.length + a.d.pieces.length) ||
         a.gid - b.gid,
     )
     const pending: { c: number; gid: number; piece: PieceSpec | null }[] = []
@@ -162,9 +226,7 @@ export function planTapChain(
           gid: e.gid,
           piece: null as PieceSpec | null,
         })),
-        ...(e.d.piece
-          ? [{ c: e.d.piece.c, gid: e.gid, piece: { ...e.d.piece } }]
-          : []),
+        ...e.d.pieces.map((p) => ({ c: p.c, gid: e.gid, piece: { ...p } })),
       ].sort((x, y) => y.c - x.c)
       pending.push(...entries)
     }
