@@ -13,7 +13,7 @@ const handleBase =
 
 function SourceView({ data }: NodeProps<Node<SourceData, 'source'>>) {
   return (
-    <div className="flex h-14 w-44 flex-col justify-center rounded-xl border border-emerald-500/40 bg-zinc-900 px-3 shadow-lg shadow-black/40">
+    <div className="flex h-[60px] w-[184px] flex-col justify-center rounded-xl border border-emerald-500/40 bg-zinc-900 px-3 shadow-lg shadow-black/40">
       <span className="text-[10px] font-medium uppercase tracking-widest text-emerald-400/90">
         Input
       </span>
@@ -31,7 +31,7 @@ function SourceView({ data }: NodeProps<Node<SourceData, 'source'>>) {
 function SinkView({ data }: NodeProps<Node<SinkData, 'sink'>>) {
   return (
     <div
-      className={`flex h-16 w-44 flex-col justify-center rounded-xl border bg-zinc-900 px-3 shadow-lg shadow-black/40 ${
+      className={`flex h-[68px] w-[184px] flex-col justify-center rounded-xl border bg-zinc-900 px-3 shadow-lg shadow-black/40 ${
         data.approximate ? 'border-amber-500/40' : 'border-sky-500/40'
       }`}
     >
@@ -55,7 +55,7 @@ function SinkView({ data }: NodeProps<Node<SinkData, 'sink'>>) {
 
 function OverflowView({ data }: NodeProps<Node<OverflowData, 'overflow'>>) {
   return (
-    <div className="flex h-14 w-44 flex-col justify-center rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 px-3">
+    <div className="flex h-[60px] w-[184px] flex-col justify-center rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 px-3">
       <span className="text-[10px] font-medium uppercase tracking-widest text-amber-400/90">
         Overflow
       </span>

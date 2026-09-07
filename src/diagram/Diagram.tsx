@@ -14,6 +14,9 @@ import '@xyflow/react/dist/style.css'
 import type { Solution } from '../solver/types'
 import { layoutSolution, type SolutionNodeType } from './layout'
 import { nodeTypes } from './NodeViews'
+import { RoutedEdge } from './RoutedEdge'
+
+const edgeTypes = { routed: RoutedEdge }
 
 export function Diagram({ solution }: { solution: Solution }) {
   return (
@@ -63,6 +66,7 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       minZoom={0.1}
       maxZoom={2}
