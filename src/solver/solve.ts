@@ -324,10 +324,14 @@ function tapSolution(
 
   const usedGids = new Set<number>()
   for (const st of plan.steps) {
-    if (st.type === 'tap2') usedGids.add(st.gid)
-    else {
+    if (st.type === 'tap2') {
+      usedGids.add(st.gid)
+      for (const s of st.shared?.shares ?? []) usedGids.add(s.gid)
+    } else {
       usedGids.add(st.g1)
       usedGids.add(st.g2)
+      for (const s of st.shared1?.shares ?? []) usedGids.add(s.gid)
+      for (const s of st.shared2?.shares ?? []) usedGids.add(s.gid)
     }
   }
   const tailIdx: number[] = []

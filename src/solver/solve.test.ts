@@ -288,3 +288,42 @@ describe('solve — max belt Mk cap', () => {
     expect(s.ok).toBe(false)
   })
 })
+
+describe('solve — shared tap pieces', () => {
+  it('780 -> 60,150,30 shares one 60 tap split between the 150 and 30 outputs', () => {
+    const s = solve({
+      inputs: [780],
+      outputs: [
+        { id: 'out1', rate: 60 },
+        { id: 'out2', rate: 150 },
+        { id: 'out3', rate: 30 },
+      ],
+      tolerance: 0.01,
+    })
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(s.buildings.splitters).toBe(3)
+    expect(s.buildings.mergers).toBe(1)
+    expect(ratesByTarget(s)).toEqual({ out1: 60, out2: 150, out3: 30 })
+    expect(verify(s).ok).toBe(true)
+  })
+
+  it('480 -> 60,150,30 also prefers the shared tap design', () => {
+    const s = solve({
+      inputs: [480],
+      outputs: [
+        { id: 'out1', rate: 60 },
+        { id: 'out2', rate: 150 },
+        { id: 'out3', rate: 30 },
+      ],
+      tolerance: 0.01,
+    })
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(
+      s.edges.filter((e) => e.tapMk !== null).length,
+    ).toBeGreaterThanOrEqual(2)
+    expect(ratesByTarget(s)).toEqual({ out1: 60, out2: 150, out3: 30 })
+    expect(verify(s).ok).toBe(true)
+  })
+})

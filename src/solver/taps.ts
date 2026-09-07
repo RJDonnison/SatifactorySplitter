@@ -173,16 +173,29 @@ export function decomposeTarget(t: number, maxMk = 6): TargetDecomp | null {
   }
 }
 
+/** one share of a shared tapped-and-split belt */
+export interface SharedShare {
+  gid: number
+  k: number
+}
+
+/** a tapped belt split once for several targets: kᵢ of d leaves per target */
+export interface SharedPiece {
+  c: number
+  d: number
+  shares: SharedShare[]
+}
+
 export type TapStep =
-  | { type: 'tap2'; c: number; gid: number; piece?: PieceSpec }
+  | { type: 'tap2'; c: number; gid: number; shared?: SharedPiece }
   | {
       type: 'tap3'
       c1: number
       g1: number
-      piece1?: PieceSpec
+      shared1?: SharedPiece
       c2: number
       g2: number
-      piece2?: PieceSpec
+      shared2?: SharedPiece
     }
 
 export interface TapPlan {
@@ -218,9 +231,15 @@ export function planTapChain(
           (a.d.coins.length + a.d.pieces.length) ||
         a.gid - b.gid,
     )
-    const pending: { c: number; gid: number; piece: PieceSpec | null }[] = []
+    interface Entry {
+      c: number
+      gid: number
+      piece: PieceSpec | null
+      shared?: SharedPiece
+    }
+    const pending: Entry[] = []
     for (const e of order) {
-      const entries = [
+      const entries: Entry[] = [
         ...e.d.coins.map((c) => ({
           c,
           gid: e.gid,
@@ -230,38 +249,85 @@ export function planTapChain(
       ].sort((x, y) => y.c - x.c)
       pending.push(...entries)
     }
+    // sharing pass: pieces tapping the same belt speed with the same split
+    // count can share ONE tap and ONE split tree when their shares fit
+    // (e.g. 30 for output A and 30 for output B = one 60 tap split 2-way)
+    const consumed = new Set<number>()
+    {
+      const byKey = new Map<string, number[]>()
+      pending.forEach((entry, idx) => {
+        if (!entry.piece) return
+        const key = `${entry.piece.c}:${entry.piece.d}`
+        const arr = byKey.get(key) ?? []
+        arr.push(idx)
+        byKey.set(key, arr)
+      })
+      for (const idxs of byKey.values()) {
+        let chunk: { gid: number; k: number; rep: number }[] = []
+        let used = 0
+        const flush = () => {
+          if (!chunk.length) return
+          const shares = chunk
+            .slice()
+            .sort((x, y) => y.k - x.k)
+            .map(({ gid, k }) => ({ gid, k }))
+          const rep = chunk[0].rep
+          pending[rep] = {
+            c: pending[rep].piece!.c,
+            gid: shares[0].gid,
+            piece: null,
+            shared: {
+              c: pending[rep].piece!.c,
+              d: pending[rep].piece!.d,
+              shares,
+            },
+          }
+          for (const m of chunk) if (m.rep !== rep) consumed.add(m.rep)
+          chunk = []
+          used = 0
+        }
+        for (const idx of idxs) {
+          const piece = pending[idx].piece!
+          if (used + piece.k > piece.d) flush()
+          chunk.push({ gid: pending[idx].gid, k: piece.k, rep: idx })
+          used += piece.k
+        }
+        flush()
+      }
+    }
+    const live = pending.filter((_, idx) => !consumed.has(idx))
     const steps: TapStep[] = []
     let f = Rf
     let failGid: number | null = null
     let i = 0
-    while (i < pending.length) {
-      if (allowPair && i + 1 < pending.length) {
-        const a = pending[i]
-        const b = pending[i + 1]
+    while (i < live.length) {
+      if (allowPair && i + 1 < live.length) {
+        const a = live[i]
+        const b = live[i + 1]
         const share3 = F.div(f, frac(3))
         if (F.cmp(frac(a.c), share3) <= 0 && F.cmp(frac(b.c), share3) <= 0) {
           steps.push({
             type: 'tap3',
             c1: a.c,
             g1: a.gid,
-            piece1: a.piece ?? undefined,
+            shared1: a.shared,
             c2: b.c,
             g2: b.gid,
-            piece2: b.piece ?? undefined,
+            shared2: b.shared,
           })
           f = F.sub(f, frac(a.c + b.c))
           i += 2
           continue
         }
       }
-      const a = pending[i]
+      const a = live[i]
       const share2 = F.div(f, frac(2))
       if (F.cmp(frac(a.c), share2) <= 0) {
         steps.push({
           type: 'tap2',
           c: a.c,
           gid: a.gid,
-          piece: a.piece ?? undefined,
+          shared: a.shared,
         })
         f = F.sub(f, frac(a.c))
         i++
@@ -287,13 +353,15 @@ export function buildTapChain(
     list.push(end)
     leafPorts.set(gid, list)
   }
-  /** A tapped belt feeding a small uniform split tree: k of d shares go to
-   * the target, the rest drains to overflow. */
-  const growPiece = (tap: BeltEnd, piece: PieceSpec, gid: number) => {
+  /** A tapped belt feeding a small uniform split tree: kᵢ of d leaves go to
+   * each sharing target (possibly several), the rest drains to overflow. */
+  const growShared = (tap: BeltEnd, sp: SharedPiece) => {
+    const assign: number[] = []
+    for (const s of sp.shares) for (let j = 0; j < s.k; j++) assign.push(s.gid)
     let leafIdx = 0
     const grow = (end: BeltEnd, d: number) => {
       if (d === 1) {
-        pushLeaf(leafIdx < piece.k ? gid : ovfGid, end)
+        pushLeaf(assign[leafIdx] ?? ovfGid, end)
         leafIdx++
         return
       }
@@ -308,7 +376,7 @@ export function buildTapChain(
           d / p,
         )
     }
-    grow(tap, piece.d)
+    grow(tap, sp.d)
   }
   const emitTap = (
     gid: number,
@@ -316,10 +384,10 @@ export function buildTapChain(
     port: number,
     c: number,
     mk: number,
-    piece: PieceSpec | undefined,
+    shared: SharedPiece | undefined,
   ) => {
     const end: BeltEnd = { node, port, rate: frac(c), tapMk: mk }
-    if (piece) growPiece(end, piece, gid)
+    if (shared) growShared(end, shared)
     else pushLeaf(gid, end)
   }
   let cur = entry
@@ -328,7 +396,7 @@ export function buildTapChain(
       const mk = mkForSpeed(st.c)
       const sid = b.splitter([{ limited: true, mk }, { limited: false }])
       b.connect(cur.node, cur.port, sid, 0, cur.rate)
-      emitTap(st.gid, sid, 0, st.c, mk, st.piece)
+      emitTap(st.gid, sid, 0, st.c, mk, st.shared)
       cur = {
         node: sid,
         port: 1,
@@ -344,8 +412,8 @@ export function buildTapChain(
         { limited: false },
       ])
       b.connect(cur.node, cur.port, sid, 0, cur.rate)
-      emitTap(st.g1, sid, 0, st.c1, mk1, st.piece1)
-      emitTap(st.g2, sid, 1, st.c2, mk2, st.piece2)
+      emitTap(st.g1, sid, 0, st.c1, mk1, st.shared1)
+      emitTap(st.g2, sid, 1, st.c2, mk2, st.shared2)
       cur = {
         node: sid,
         port: 2,
