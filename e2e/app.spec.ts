@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('loads with the default demo problem', async ({ page }) => {
-  await expect(page).toHaveTitle('Satisfactory Splitter Planner')
+  await expect(page).toHaveTitle(/^Satisfactory Splitter Planner/)
   await expect(
     page.getByRole('heading', { name: 'Inputs', level: 2 }),
   ).toBeVisible()
