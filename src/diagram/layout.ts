@@ -4,6 +4,7 @@ import type { Edge, Node } from '@xyflow/react'
 import { formatFrac } from '../solver/frac'
 import type { NetEdge, NetNode, Solution } from '../solver/types'
 import { BELT_HEX } from './belts'
+import { orthogonalRoute } from './ortho'
 
 export interface SourceData extends Record<string, unknown> {
   rate: string
@@ -110,12 +111,47 @@ export async function layoutSolution(sol: Solution): Promise<{
     sol.edges.map((e) => ({ id: e.id, sources: [e.src], targets: [e.dst] })),
   )
 
+  const kindOf = new Map(sol.nodes.map((n) => [n.id, n.kind]))
+  // how many belts actually enter each merger / leave each splitter — slots
+  // are spread evenly over the used ports only (2 merger inputs sit at 1/3
+  // and 2/3 of the height, not bunched into the 3-slot grid)
+  const mergerIns = new Map<string, number>()
+  const splitterOuts = new Map<string, number>()
+  for (const e of sol.edges) {
+    if (kindOf.get(e.dst) === 'merger')
+      mergerIns.set(e.dst, (mergerIns.get(e.dst) ?? 0) + 1)
+    if (kindOf.get(e.src) === 'splitter')
+      splitterOuts.set(e.src, (splitterOuts.get(e.src) ?? 0) + 1)
+  }
+
   let rankPos = pos1
   const yOf = (id: string) => (rankPos.get(id) ?? { x: 0, y: 0 }).y
+  const heightOf = (id: string) => SIZES[kindOf.get(id) ?? 'sink'].h
+
+  // y of the handle a belt lands on (merger input slot, else node centre) —
+  // ordering by handle height instead of node height avoids one-slot swaps
+  const dstHandleY = (e: NetEdge) => {
+    if (kindOf.get(e.dst) === 'merger') {
+      const m = mergerIns.get(e.dst) ?? 3
+      const r = inRank.get(`${e.dst}:${e.dstPort}`)
+      if (r !== undefined)
+        return yOf(e.dst) + ((r + 1) / (m + 1)) * heightOf(e.dst)
+    }
+    return yOf(e.dst) + heightOf(e.dst) / 2
+  }
+  // y of the handle a belt leaves from (splitter output slot, else centre)
+  const srcHandleY = (e: NetEdge) => {
+    if (kindOf.get(e.src) === 'splitter') {
+      const cnt = splitterOuts.get(e.src) ?? 2
+      const r = outRank.get(`${e.src}:${e.srcPort}`)
+      if (r !== undefined)
+        return yOf(e.src) + ((r + 1) / (cnt + 1)) * heightOf(e.src)
+    }
+    return yOf(e.src) + heightOf(e.src) / 2
+  }
 
   const outTop = new Map<string, string>()
   const outRank = new Map<string, number>()
-  const MERGER_SLOTS = ['25%', '50%', '75%']
   const inTop = new Map<string, string>()
   const inRank = new Map<string, number>()
   const fillRanks = () => {
@@ -123,13 +159,32 @@ export async function layoutSolution(sol: Solution): Promise<{
     outRank.clear()
     inTop.clear()
     inRank.clear()
+    // merger inputs first (splitter outputs below order by where they land)
+    for (const n of sol.nodes) {
+      if (n.kind !== 'merger') continue
+      const ins = sol.edges
+        .filter((e) => e.dst === n.id)
+        .sort(
+          (a, b) =>
+            srcHandleY(a) - srcHandleY(b) ||
+            a.srcPort - b.srcPort ||
+            a.dstPort - b.dstPort,
+        )
+      ins.forEach((e, rank) => {
+        inTop.set(
+          `${e.dst}:${e.dstPort}`,
+          `${(((rank + 1) / (ins.length + 1)) * 100).toFixed(2)}%`,
+        )
+        inRank.set(`${e.dst}:${e.dstPort}`, rank)
+      })
+    }
     for (const n of sol.nodes) {
       if (n.kind !== 'splitter') continue
       const outs = sol.edges
         .filter((e) => e.src === n.id)
         .sort(
           (a, b) =>
-            yOf(a.dst) - yOf(b.dst) ||
+            dstHandleY(a) - dstHandleY(b) ||
             a.dstPort - b.dstPort ||
             a.srcPort - b.srcPort,
         )
@@ -141,28 +196,12 @@ export async function layoutSolution(sol: Solution): Promise<{
         outRank.set(`${e.src}:${e.srcPort}`, rank)
       })
     }
-    for (const n of sol.nodes) {
-      if (n.kind !== 'merger') continue
-      const ins = sol.edges
-        .filter((e) => e.dst === n.id)
-        .sort(
-          (a, b) =>
-            yOf(a.src) - yOf(b.src) ||
-            a.srcPort - b.srcPort ||
-            a.dstPort - b.dstPort,
-        )
-      ins.forEach((e, rank) => {
-        inTop.set(`${e.dst}:${e.dstPort}`, MERGER_SLOTS[rank] ?? '75%')
-        inRank.set(`${e.dst}:${e.dstPort}`, rank)
-      })
-    }
   }
   fillRanks()
 
   // pass 2: re-layout with FIXED_POS ports at the ranked handle slots, so the
   // layout engine sees the real anchor points and can order nodes to keep
   // long belts clear of intermediate splitters and mergers
-  const kindOf = new Map(sol.nodes.map((n) => [n.id, n.kind]))
   const buildChildren = (): ElkNode[] =>
     sol.nodes.map((n) => {
       const s = SIZES[n.kind]
@@ -181,9 +220,10 @@ export async function layoutSolution(sol: Solution): Promise<{
           )
         })
       } else {
-        for (let p = 0; p < 3; p++) {
+        const m = mergerIns.get(n.id) ?? 3
+        for (let p = 0; p < m; p++) {
           const rank = inRank.get(`${n.id}:${p}`) ?? p
-          ports.push(portRef(`${n.id}__p${p}`, 0, ((rank + 1) / 4) * s.h))
+          ports.push(portRef(`${n.id}__p${p}`, 0, ((rank + 1) / (m + 1)) * s.h))
         }
         ports.push(portRef(`${n.id}__out`, s.w, s.h / 2))
       }
@@ -235,6 +275,40 @@ export async function layoutSolution(sol: Solution): Promise<{
       pts.push({ x: sec.endPoint.x, y: sec.endPoint.y })
     }
     if (pts.length >= 2) waypoints.set(ge.id, pts)
+  }
+
+  // re-anchor every route to the exact handle positions implied by the final
+  // layout and slot ranks, and make it strictly orthogonal — BEFORE bending
+  // segments around node boxes, so the detour pass sees the final geometry
+  const handlePoint = (e: NetEdge, side: 'src' | 'dst') => {
+    const id = side === 'src' ? e.src : e.dst
+    const p = pos.get(id)
+    const kind = kindOf.get(id)
+    const s = SIZES[kind ?? 'sink']
+    if (!p) return null
+    if (side === 'src') {
+      if (kind === 'splitter') {
+        const r = outRank.get(`${id}:${e.srcPort}`)
+        const cnt = splitterOuts.get(id) ?? 2
+        if (r !== undefined)
+          return { x: p.x + s.w, y: p.y + ((r + 1) / (cnt + 1)) * s.h }
+      }
+      return { x: p.x + s.w, y: p.y + s.h / 2 }
+    }
+    if (kind === 'merger') {
+      const m = mergerIns.get(id) ?? 3
+      const r = inRank.get(`${id}:${e.dstPort}`)
+      if (r !== undefined) return { x: p.x, y: p.y + ((r + 1) / (m + 1)) * s.h }
+    }
+    return { x: p.x, y: p.y + s.h / 2 }
+  }
+  for (const e of sol.edges) {
+    const pts = waypoints.get(e.id)
+    if (!pts || pts.length < 2) continue
+    const src = handlePoint(e, 'src')
+    const dst = handlePoint(e, 'dst')
+    if (!src || !dst) continue
+    waypoints.set(e.id, orthogonalRoute(pts, src, dst))
   }
 
   // ELK's orthogonal routes can still cut through an intermediate node box;
@@ -427,16 +501,21 @@ export async function layoutSolution(sol: Solution): Promise<{
               .sort((a, b) => parseFloat(a.top) - parseFloat(b.top)),
           },
         }
-      case 'merger':
+      case 'merger': {
+        const m = mergerIns.get(n.id) ?? 3
         return {
           ...base,
           type: 'merger',
           data: {
-            inputTops: [0, 1, 2].map(
-              (p) => inTop.get(`${n.id}:${p}`) ?? MERGER_SLOTS[p],
+            inputTops: Array.from(
+              { length: m },
+              (_, p) =>
+                inTop.get(`${n.id}:${p}`) ??
+                `${(((p + 1) / (m + 1)) * 100).toFixed(2)}%`,
             ),
           },
         }
+      }
     }
   })
 

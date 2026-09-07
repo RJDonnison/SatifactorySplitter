@@ -55,7 +55,6 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
         i.push({ port: dstPort, y: yById.get(e.source) ?? 0 })
         inBy.set(e.target, i)
       }
-      const slots = ['25%', '50%', '75%']
       return nds.map((n) => {
         if (n.type === 'splitter') {
           const outs = (outBy.get(n.id) ?? [])
@@ -80,10 +79,22 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
           const ins = (inBy.get(n.id) ?? [])
             .slice()
             .sort((a, b) => a.y - b.y || a.port - b.port)
-          const inputTops = slots.map((fallback, p) => {
-            const rank = ins.findIndex((i) => i.port === p)
-            return rank >= 0 ? slots[rank] : (n.data.inputTops?.[p] ?? fallback)
-          })
+          if (ins.length === 0) return n
+          // spread the used inputs evenly over the node height
+          const topByPort = new Map(
+            ins.map(
+              (i, r) =>
+                [
+                  i.port,
+                  `${(((r + 1) / (ins.length + 1)) * 100).toFixed(2)}%`,
+                ] as const,
+            ),
+          )
+          const maxPort = Math.max(...ins.map((i) => i.port))
+          const inputTops = Array.from(
+            { length: maxPort + 1 },
+            (_, p) => topByPort.get(p) ?? n.data.inputTops?.[p] ?? '50%',
+          )
           return { ...n, data: { ...n.data, inputTops } }
         }
         return n

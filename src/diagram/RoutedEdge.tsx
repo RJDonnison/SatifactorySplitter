@@ -4,6 +4,7 @@ import {
   getSmoothStepPath,
   type EdgeProps,
 } from '@xyflow/react'
+import { orthogonalRoute } from './ortho'
 
 export interface RoutedEdgeData extends Record<string, unknown> {
   waypoints?: { x: number; y: number }[]
@@ -123,33 +124,11 @@ export function RoutedEdge({
       wp[wp.length - 1].y - targetY,
     )
     if (startDrift + endDrift <= REANCHOR_TOLERANCE) {
-      const pts = wp.map((p) => ({ x: p.x, y: p.y }))
-      // belts must leave and enter sideways handles horizontally — insert
-      // orthogonal bends so re-anchoring never produces diagonal segments
-      const firstBend = pts[1]
-      pts[0] = { x: sourceX, y: sourceY }
-      pts[pts.length - 1] = { x: targetX, y: targetY }
-      if (
-        wp.length >= 3 &&
-        firstBend &&
-        firstBend.x !== sourceX &&
-        firstBend.y !== sourceY
+      const cleaned = orthogonalRoute(
+        wp,
+        { x: sourceX, y: sourceY },
+        { x: targetX, y: targetY },
       )
-        pts.splice(1, 0, { x: firstBend.x, y: sourceY })
-      const bendOut = pts[pts.length - 2]
-      if (
-        wp.length >= 3 &&
-        bendOut &&
-        bendOut.x !== targetX &&
-        bendOut.y !== targetY
-      )
-        pts.splice(pts.length - 1, 0, { x: bendOut.x, y: targetY })
-      const cleaned: { x: number; y: number }[] = [pts[0]]
-      for (let i = 1; i < pts.length; i++) {
-        const last = cleaned[cleaned.length - 1]
-        if (Math.hypot(pts[i].x - last.x, pts[i].y - last.y) > 1)
-          cleaned.push(pts[i])
-      }
       path = roundedPath(cleaned)
       labelAt = d?.labelPos
         ? snapToPolyline(cleaned, d.labelPos)
