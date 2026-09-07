@@ -204,9 +204,7 @@ export function chooseSnappedN(
         feasible = false
         break
       }
-      const next = [...ks]
-      next[bi]--
-      ks = next
+      ks[bi]--
       over--
     }
     if (!feasible) continue

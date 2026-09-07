@@ -112,40 +112,28 @@ export function RoutedEdge({
   const wp = d?.waypoints
 
   let path: string
-  let labelAt = {
-    x: (sourceX + targetX) / 2,
-    y: (sourceY + targetY) / 2,
-  }
+  let labelAt: { x: number; y: number }
 
-  if (wp && wp.length >= 2) {
-    const startDrift = Math.hypot(wp[0].x - sourceX, wp[0].y - sourceY)
-    const endDrift = Math.hypot(
-      wp[wp.length - 1].x - targetX,
-      wp[wp.length - 1].y - targetY,
+  const anchored =
+    !!wp &&
+    wp.length >= 2 &&
+    Math.hypot(wp[0].x - sourceX, wp[0].y - sourceY) +
+      Math.hypot(
+        wp[wp.length - 1].x - targetX,
+        wp[wp.length - 1].y - targetY,
+      ) <=
+      REANCHOR_TOLERANCE
+
+  if (anchored && wp) {
+    const cleaned = orthogonalRoute(
+      wp,
+      { x: sourceX, y: sourceY },
+      { x: targetX, y: targetY },
     )
-    if (startDrift + endDrift <= REANCHOR_TOLERANCE) {
-      const cleaned = orthogonalRoute(
-        wp,
-        { x: sourceX, y: sourceY },
-        { x: targetX, y: targetY },
-      )
-      path = roundedPath(cleaned)
-      labelAt = d?.labelPos
-        ? snapToPolyline(cleaned, d.labelPos)
-        : polylineMid(cleaned)
-    } else {
-      const [smooth, lx, ly] = getSmoothStepPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        borderRadius: 10,
-      })
-      path = smooth
-      labelAt = { x: lx, y: ly }
-    }
+    path = roundedPath(cleaned)
+    labelAt = d?.labelPos
+      ? snapToPolyline(cleaned, d.labelPos)
+      : polylineMid(cleaned)
   } else {
     const [smooth, lx, ly] = getSmoothStepPath({
       sourceX,

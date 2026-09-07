@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { Solution } from '../solver/types'
-import { layoutSolution, type SolutionNodeType } from './layout'
+import { layoutSolution, slotPct, type SolutionNodeType } from './layout'
 import { nodeTypes } from './NodeViews'
 import { RoutedEdge } from './RoutedEdge'
 
@@ -79,18 +79,12 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
       }
       return nds.map((n) => {
         if (n.type === 'splitter') {
-          const outs = (outBy.get(n.id) ?? [])
-            .slice()
-            .sort((a, b) => a.y - b.y || a.port - b.port)
+          const outs = (outBy.get(n.id) ?? []).sort(
+            (a, b) => a.y - b.y || a.port - b.port,
+          )
           if (outs.length === 0) return n
           const topByPort = new Map(
-            outs.map(
-              (o, r) =>
-                [
-                  o.port,
-                  `${(((r + 1) / (outs.length + 1)) * 100).toFixed(2)}%`,
-                ] as const,
-            ),
+            outs.map((o, r) => [o.port, slotPct(r, outs.length)] as const),
           )
           const ports = n.data.ports
             .map((p) => ({ ...p, top: topByPort.get(p.port) ?? p.top }))
@@ -98,19 +92,13 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
           return { ...n, data: { ...n.data, ports } }
         }
         if (n.type === 'merger') {
-          const ins = (inBy.get(n.id) ?? [])
-            .slice()
-            .sort((a, b) => a.y - b.y || a.port - b.port)
+          const ins = (inBy.get(n.id) ?? []).sort(
+            (a, b) => a.y - b.y || a.port - b.port,
+          )
           if (ins.length === 0) return n
           // spread the used inputs evenly over the node height
           const topByPort = new Map(
-            ins.map(
-              (i, r) =>
-                [
-                  i.port,
-                  `${(((r + 1) / (ins.length + 1)) * 100).toFixed(2)}%`,
-                ] as const,
-            ),
+            ins.map((i, r) => [i.port, slotPct(r, ins.length)] as const),
           )
           const maxPort = Math.max(...ins.map((i) => i.port))
           const inputTops = Array.from(

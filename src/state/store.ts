@@ -71,10 +71,3 @@ export const useStore = create<AppState>((set) => ({
   setTolerance: (t) => set({ tolerance: t }),
   setMaxMk: (mk) => set({ maxMk: Math.min(6, Math.max(1, Math.round(mk))) }),
 }))
-
-export const selectProblem = (s: AppState): Problem => ({
-  inputs: s.inputs,
-  outputs: s.outputs,
-  tolerance: s.tolerance,
-  maxMk: s.maxMk,
-})

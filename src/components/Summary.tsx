@@ -72,10 +72,9 @@ export function Summary({ solution }: { solution: Solution }) {
     )
   }
 
-  const sinkRates = solution.nodes
-    .filter((n) => n.kind === 'sink')
-    .map((n) => (n.kind === 'sink' ? n : null))
-    .filter((n): n is NonNullable<typeof n> => n !== null)
+  const sinkRates = solution.nodes.filter(
+    (n): n is Extract<typeof n, { kind: 'sink' }> => n.kind === 'sink',
+  )
 
   return (
     <section className="space-y-5">

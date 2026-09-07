@@ -49,6 +49,9 @@ export function beltInfo(e: NetEdge): BeltInfo {
   return { hex: PLAIN_BELT_HEX, label: 'any belt' }
 }
 
+export const slotPct = (rank: number, count: number): string =>
+  `${(((rank + 1) / (count + 1)) * 100).toFixed(2)}%`
+
 const SIZES: Record<NetNode['kind'], { w: number; h: number }> = {
   source: { w: 184, h: 60 },
   sink: { w: 184, h: 68 },
@@ -174,10 +177,7 @@ export async function layoutSolution(sol: Solution): Promise<{
             a.dstPort - b.dstPort,
         )
       ins.forEach((e, rank) => {
-        inTop.set(
-          `${e.dst}:${e.dstPort}`,
-          `${(((rank + 1) / (ins.length + 1)) * 100).toFixed(2)}%`,
-        )
+        inTop.set(`${e.dst}:${e.dstPort}`, slotPct(rank, ins.length))
         inRank.set(`${e.dst}:${e.dstPort}`, rank)
       })
     }
@@ -192,10 +192,7 @@ export async function layoutSolution(sol: Solution): Promise<{
             a.srcPort - b.srcPort,
         )
       outs.forEach((e, rank) => {
-        outTop.set(
-          `${e.src}:${e.srcPort}`,
-          `${(((rank + 1) / (outs.length + 1)) * 100).toFixed(2)}%`,
-        )
+        outTop.set(`${e.src}:${e.srcPort}`, slotPct(rank, outs.length))
         outRank.set(`${e.src}:${e.srcPort}`, rank)
       })
     }
@@ -245,9 +242,8 @@ export async function layoutSolution(sol: Solution): Promise<{
     sources: [endpoint(e.src, 'out', e.srcPort)],
     targets: [endpoint(e.dst, 'in', e.dstPort)],
   }))
-  let graph2 = await layoutElk(buildChildren(), elkEdges, {
-    'elk.layered.portConstraints': 'FIXED_POS',
-  })
+  const fixedPos = { 'elk.layered.portConstraints': 'FIXED_POS' }
+  let graph2 = await layoutElk(buildChildren(), elkEdges, fixedPos)
   let pos = graph2.pos
   for (let attempt = 0; attempt < 5; attempt++) {
     const prevOut = new Map(outRank)
@@ -258,9 +254,7 @@ export async function layoutSolution(sol: Solution): Promise<{
       [...outRank].every(([k, v]) => prevOut.get(k) === v) &&
       [...inRank].every(([k, v]) => prevIn.get(k) === v)
     if (stable) break
-    graph2 = await layoutElk(buildChildren(), elkEdges, {
-      'elk.layered.portConstraints': 'FIXED_POS',
-    })
+    graph2 = await layoutElk(buildChildren(), elkEdges, fixedPos)
     pos = graph2.pos
   }
   // handle slots must match the positions we actually render, even when the
@@ -320,17 +314,15 @@ export async function layoutSolution(sol: Solution): Promise<{
   const CLEAR = 16
   const edgeById = new Map(sol.edges.map((e) => [e.id, e]))
   const sizeOf = new Map(sol.nodes.map((n) => [n.id, SIZES[n.kind]]))
-  const segCross = (
+  const segCrossBox = (
     a: Pt,
     b: Pt,
     bx: { l: number; t: number; r: number; b: number },
-  ) => {
-    const x0 = Math.min(a.x, b.x)
-    const x1 = Math.max(a.x, b.x)
-    const y0 = Math.min(a.y, b.y)
-    const y1 = Math.max(a.y, b.y)
-    return x1 > bx.l && x0 < bx.r && y1 > bx.t && y0 < bx.b
-  }
+  ) =>
+    Math.max(a.x, b.x) > bx.l &&
+    Math.min(a.x, b.x) < bx.r &&
+    Math.max(a.y, b.y) > bx.t &&
+    Math.min(a.y, b.y) < bx.b
   const detour = (
     a: Pt,
     b: Pt,
@@ -375,7 +367,7 @@ export async function layoutSolution(sol: Solution): Promise<{
         for (let i = 1; i < pts.length; i++) {
           const a = next.pop()!
           const b = pts[i]
-          if (segCross(a, b, bx)) {
+          if (segCrossBox(a, b, bx)) {
             next.push(...detour(a, b, bx))
             fixed++
           } else {
@@ -402,15 +394,6 @@ export async function layoutSolution(sol: Solution): Promise<{
       : { id, l: 0, t: 0, r: 0, b: 0 }
   }
   const allBoxes = sol.nodes.map((n) => boxOf(n.id))
-  const segCrossBox = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    bx: { l: number; t: number; r: number; b: number },
-  ) =>
-    Math.max(a.x, b.x) > bx.l &&
-    Math.min(a.x, b.x) < bx.r &&
-    Math.max(a.y, b.y) > bx.t &&
-    Math.min(a.y, b.y) < bx.b
   const segsCross = (
     a1: { x: number; y: number },
     a2: { x: number; y: number },
@@ -481,14 +464,13 @@ export async function layoutSolution(sol: Solution): Promise<{
               return null
       return routes
     }
-    const perms: number[][] = [[]]
+    let perms: number[][] = [[]]
     for (let i = 0; i < n; i++) {
       const next: number[][] = []
       for (const p of perms)
         for (let k = 0; k <= p.length; k++)
           next.push([...p.slice(0, k), i, ...p.slice(k)])
-      perms.length = 0
-      perms.push(...next)
+      perms = next
     }
     let fan: { x: number; y: number }[][] | null = null
     for (const perm of perms) {
@@ -589,16 +571,16 @@ export async function layoutSolution(sol: Solution): Promise<{
     eid: string
     cands: { x: number; y: number; score: number }[]
   }[] = []
+  const boxes = sol.nodes
+    .map((n) => {
+      const p = pos.get(n.id)
+      const sz = sizeOf.get(n.id)
+      return p && sz ? { l: p.x, t: p.y, r: p.x + sz.w, b: p.y + sz.h } : null
+    })
+    .filter(
+      (b): b is { l: number; t: number; r: number; b: number } => b !== null,
+    )
   for (const [eid, pts] of waypoints) {
-    const boxes = sol.nodes
-      .map((n) => {
-        const p = pos.get(n.id)
-        const sz = sizeOf.get(n.id)
-        return p && sz ? { l: p.x, t: p.y, r: p.x + sz.w, b: p.y + sz.h } : null
-      })
-      .filter(
-        (b): b is { l: number; t: number; r: number; b: number } => b !== null,
-      )
     if (!boxes.length) continue
     let total = 0
     for (let i = 1; i < pts.length; i++)
@@ -682,7 +664,7 @@ export async function layoutSolution(sol: Solution): Promise<{
                 port: portIndex,
                 top:
                   outTop.get(`${n.id}:${portIndex}`) ??
-                  `${(((portIndex + 1) / (n.ports.length + 1)) * 100).toFixed(2)}%`,
+                  slotPct(portIndex, n.ports.length),
               }))
               .sort((a, b) => parseFloat(a.top) - parseFloat(b.top)),
           },
@@ -695,9 +677,7 @@ export async function layoutSolution(sol: Solution): Promise<{
           data: {
             inputTops: Array.from(
               { length: m },
-              (_, p) =>
-                inTop.get(`${n.id}:${p}`) ??
-                `${(((p + 1) / (m + 1)) * 100).toFixed(2)}%`,
+              (_, p) => inTop.get(`${n.id}:${p}`) ?? slotPct(p, m),
             ),
           },
         }
