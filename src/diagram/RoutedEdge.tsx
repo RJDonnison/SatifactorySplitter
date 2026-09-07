@@ -58,6 +58,33 @@ function polylineMid(pts: { x: number; y: number }[]) {
   return pts[pts.length - 1]
 }
 
+/** nearest point on a polyline to p — keeps labels on the belt itself */
+function snapToPolyline(
+  pts: { x: number; y: number }[],
+  p: { x: number; y: number },
+) {
+  let best = pts[0]
+  let bestD = Infinity
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]
+    const b = pts[i]
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const len2 = dx * dx + dy * dy || 1
+    const t = Math.max(
+      0,
+      Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2),
+    )
+    const q = { x: a.x + dx * t, y: a.y + dy * t }
+    const dd = (q.x - p.x) ** 2 + (q.y - p.y) ** 2
+    if (dd < bestD) {
+      bestD = dd
+      best = q
+    }
+  }
+  return best
+}
+
 /** total endpoint drift (px) beyond which the route is treated as stale (node dragged) */
 const REANCHOR_TOLERANCE = 64
 
@@ -84,7 +111,7 @@ export function RoutedEdge({
   const wp = d?.waypoints
 
   let path: string
-  let labelAt = d?.labelPos ?? {
+  let labelAt = {
     x: (sourceX + targetX) / 2,
     y: (sourceY + targetY) / 2,
   }
@@ -97,8 +124,26 @@ export function RoutedEdge({
     )
     if (startDrift + endDrift <= REANCHOR_TOLERANCE) {
       const pts = wp.map((p) => ({ x: p.x, y: p.y }))
+      // belts must leave and enter sideways handles horizontally — insert
+      // orthogonal bends so re-anchoring never produces diagonal segments
+      const firstBend = pts[1]
       pts[0] = { x: sourceX, y: sourceY }
       pts[pts.length - 1] = { x: targetX, y: targetY }
+      if (
+        wp.length >= 3 &&
+        firstBend &&
+        firstBend.x !== sourceX &&
+        firstBend.y !== sourceY
+      )
+        pts.splice(1, 0, { x: firstBend.x, y: sourceY })
+      const bendOut = pts[pts.length - 2]
+      if (
+        wp.length >= 3 &&
+        bendOut &&
+        bendOut.x !== targetX &&
+        bendOut.y !== targetY
+      )
+        pts.splice(pts.length - 1, 0, { x: bendOut.x, y: targetY })
       const cleaned: { x: number; y: number }[] = [pts[0]]
       for (let i = 1; i < pts.length; i++) {
         const last = cleaned[cleaned.length - 1]
@@ -106,9 +151,11 @@ export function RoutedEdge({
           cleaned.push(pts[i])
       }
       path = roundedPath(cleaned)
-      if (!d?.labelPos) labelAt = polylineMid(cleaned)
+      labelAt = d?.labelPos
+        ? snapToPolyline(cleaned, d.labelPos)
+        : polylineMid(cleaned)
     } else {
-      const [smooth] = getSmoothStepPath({
+      const [smooth, lx, ly] = getSmoothStepPath({
         sourceX,
         sourceY,
         sourcePosition,
@@ -118,9 +165,10 @@ export function RoutedEdge({
         borderRadius: 10,
       })
       path = smooth
+      labelAt = { x: lx, y: ly }
     }
   } else {
-    const [smooth] = getSmoothStepPath({
+    const [smooth, lx, ly] = getSmoothStepPath({
       sourceX,
       sourceY,
       sourcePosition,
@@ -130,6 +178,7 @@ export function RoutedEdge({
       borderRadius: 10,
     })
     path = smooth
+    labelAt = { x: lx, y: ly }
   }
 
   return (

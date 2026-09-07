@@ -206,21 +206,24 @@ export async function layoutSolution(sol: Solution): Promise<{
     'elk.layered.portConstraints': 'FIXED_POS',
   })
   let pos = graph2.pos
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     const prevOut = new Map(outRank)
     const prevIn = new Map(inRank)
-    rankPos = graph2.pos
+    rankPos = pos
     fillRanks()
     const stable =
       [...outRank].every(([k, v]) => prevOut.get(k) === v) &&
       [...inRank].every(([k, v]) => prevIn.get(k) === v)
-    pos = graph2.pos
     if (stable) break
     graph2 = await layoutElk(buildChildren(), elkEdges, {
       'elk.layered.portConstraints': 'FIXED_POS',
     })
     pos = graph2.pos
   }
+  // handle slots must match the positions we actually render, even when the
+  // iteration above did not fully settle
+  rankPos = pos
+  fillRanks()
 
   // harvest ELK's orthogonal routes (they steer around nodes) as waypoints
   const waypoints = new Map<string, { x: number; y: number }[]>()
@@ -312,7 +315,7 @@ export async function layoutSolution(sol: Solution): Promise<{
 
   // pick each label spot with clearance from node boxes, preferring the
   // natural mid-point of the belt so labels do not hug handles or sit on
-  // splitters, mergers and other nodes
+  // splitters, mergers and other nodes; then spread colliding labels apart
   const labelPos = new Map<string, { x: number; y: number }>()
   const distToBox = (
     p: { x: number; y: number },
@@ -322,6 +325,10 @@ export async function layoutSolution(sol: Solution): Promise<{
     const dy = Math.max(bx.t - p.y, 0, p.y - bx.b)
     return Math.hypot(dx, dy)
   }
+  const candsByEdge: {
+    eid: string
+    cands: { x: number; y: number; score: number }[]
+  }[] = []
   for (const [eid, pts] of waypoints) {
     const boxes = sol.nodes
       .map((n) => {
@@ -336,8 +343,7 @@ export async function layoutSolution(sol: Solution): Promise<{
     let total = 0
     for (let i = 1; i < pts.length; i++)
       total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
-    let best: { x: number; y: number } | null = null
-    let bestScore = -1
+    const cands: { x: number; y: number; score: number }[] = []
     let acc = 0
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1]
@@ -351,16 +357,26 @@ export async function layoutSolution(sol: Solution): Promise<{
         if (at < total * 0.12 || at > total * 0.88) continue
         const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
         const clear = Math.min(...boxes.map((bx) => distToBox(p, bx)))
-        const score = clear - Math.abs(at / total - 0.5) * 40
-        if (score > bestScore) {
-          bestScore = score
-          best = p
-        }
+        cands.push({ ...p, score: clear - Math.abs(at / total - 0.5) * 40 })
       }
       acc += len
     }
-    if (best) labelPos.set(eid, best)
+    cands.sort((a, b) => b.score - a.score)
+    if (cands.length) candsByEdge.push({ eid, cands: cands.slice(0, 12) })
   }
+  // most constrained edges (fewest options / shortest belts) place first,
+  // later edges pick their best spot that keeps clear of taken positions
+  const taken: { x: number; y: number }[] = []
+  const clashes = (p: { x: number; y: number }) =>
+    taken.some((q) => Math.abs(q.x - p.x) < 100 && Math.abs(q.y - p.y) < 20)
+  candsByEdge
+    .slice()
+    .sort((a, b) => a.cands.length - b.cands.length)
+    .forEach(({ eid, cands }) => {
+      const pick = cands.find((c) => !clashes(c)) ?? cands[0]
+      labelPos.set(eid, pick)
+      taken.push(pick)
+    })
 
   const inRateOf = (id: string): string | null => {
     const e = sol.edges.find((x) => x.dst === id && x.dstPort === 0)
