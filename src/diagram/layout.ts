@@ -438,30 +438,29 @@ export async function layoutSolution(sol: Solution): Promise<{
   }
   const bundles = new Map<string, NetEdge[]>()
   for (const e of sol.edges) {
-    const key = `${e.src}>${e.dst}`
-    const list = bundles.get(key) ?? []
+    // group every belt entering the same merger — ELK gives each its own
+    // corridor and lane swaps make belts cross or run on top of each other
+    if (kindOf.get(e.dst) !== 'merger') continue
+    const list = bundles.get(e.dst) ?? []
     list.push(e)
-    bundles.set(key, list)
+    bundles.set(e.dst, list)
   }
-  for (const [key, group] of bundles) {
+  for (const [dstId, group] of bundles) {
     if (group.length < 2) continue
-    const [srcId, dstId] = key.split('>')
-    const srcBox = boxOf(srcId)
     const dstBox = boxOf(dstId)
-    const gapL = srcBox.r + 24
-    const gapR = dstBox.l - 24
-    if (gapR - gapL < 40) continue // no room for a fan — keep routed paths
-    const mid = (gapL + gapR) / 2
     const ends = group.map((e) => {
       const pts = waypoints.get(e.id)
       return { exit: pts?.[0], entry: pts?.[pts.length - 1] }
     })
     if (ends.some((x) => !x.exit || !x.entry)) continue
+    // corridors live in the gap past the furthest exit, before the merger
+    const gapL = Math.max(...ends.map((x) => x.exit!.x)) + 20
+    const gapR = dstBox.l - 20
     const n = group.length
-    const spacing = 14
+    if (gapR - gapL < n * 28 + 24) continue // no room for a fan — keep routed paths
     const buildFan = (perm: number[]) => {
       const routes = group.map((_, i) => {
-        const xc = mid + (perm[i] - (n - 1) / 2) * spacing
+        const xc = gapL + ((perm[i] + 1) * (gapR - gapL)) / (n + 1)
         const a = ends[i].exit!
         const b = ends[i].entry!
         return a.y === b.y
@@ -475,8 +474,8 @@ export async function layoutSolution(sol: Solution): Promise<{
         for (let s = 1; s < route.length; s++)
           for (const bx of allBoxes)
             if (
-              bx.id !== srcId &&
               bx.id !== dstId &&
+              !group.some((g) => bx.id === g.src) &&
               segCrossBox(route[s - 1], route[s], bx)
             )
               return null
@@ -497,6 +496,81 @@ export async function layoutSolution(sol: Solution): Promise<{
       if (fan) break
     }
     if (fan) group.forEach((e, i) => waypoints.set(e.id, fan![i]))
+  }
+
+  // belts ELK lane-swapped into the same vertical corridor run on top of
+  // each other — an overlapping pair reads as one line and hides a crossing;
+  // nudge one belt sideways with a small orthogonal jog
+  const vRuns = (pts: Pt[]) => {
+    const out: { x: number; y0: number; y1: number }[] = []
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]
+      const b = pts[i]
+      if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 6)
+        out.push({ x: a.x, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) })
+    }
+    return out
+  }
+  const runsCoincide = (
+    ra: { x: number; y0: number; y1: number },
+    rb: { x: number; y0: number; y1: number },
+  ) =>
+    Math.abs(ra.x - rb.x) < 6 &&
+    Math.min(ra.y1, rb.y1) - Math.max(ra.y0, rb.y0) > 6
+  for (let i = 0; i < sol.edges.length; i++) {
+    for (let j = i + 1; j < sol.edges.length; j++) {
+      const eb = sol.edges[j]
+      const A = waypoints.get(sol.edges[i].id)
+      const B = waypoints.get(eb.id)
+      if (!A || !B || A.length < 2 || B.length < 2) continue
+      const runsA = vRuns(A)
+      if (!runsA.some((ra) => vRuns(B).some((rb) => runsCoincide(ra, rb))))
+        continue
+      const next = B.map((p) => ({ ...p }))
+      let moved = false
+      for (let k = 1; k < next.length; k++) {
+        const a = next[k - 1]
+        const b = next[k]
+        if (Math.abs(a.x - b.x) >= 0.5 || Math.abs(a.y - b.y) <= 6) continue
+        const run = {
+          x: a.x,
+          y0: Math.min(a.y, b.y),
+          y1: Math.max(a.y, b.y),
+        }
+        if (!runsA.some((ra) => runsCoincide(ra, run))) continue
+        let x: number | null = null
+        for (const off of [16, -16, 32, -32]) {
+          const cand = a.x + off
+          const segs: [Pt, Pt][] = [
+            [a, { x: cand, y: a.y }],
+            [
+              { x: cand, y: a.y },
+              { x: cand, y: b.y },
+            ],
+            [{ x: cand, y: b.y }, b],
+          ]
+          if (
+            segs.every(([s0, s1]) =>
+              allBoxes.every(
+                (bx) =>
+                  bx.id === eb.src ||
+                  bx.id === eb.dst ||
+                  !segCrossBox(s0, s1, bx),
+              ),
+            )
+          ) {
+            x = cand
+            break
+          }
+        }
+        if (x !== null) {
+          next.splice(k, 1, { x, y: a.y }, { x, y: b.y })
+          k++
+          moved = true
+        }
+      }
+      if (moved) waypoints.set(eb.id, next)
+    }
   }
 
   // pick each label spot with clearance from node boxes, preferring the
