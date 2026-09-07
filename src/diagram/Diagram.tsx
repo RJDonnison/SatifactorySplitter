@@ -42,17 +42,39 @@ function DiagramCanvas({ solution }: { solution: Solution }) {
   // crossing each other
   const onNodeDragStop = useCallback(() => {
     setNodes((nds) => {
+      const nodeById = new Map(nds.map((n) => [n.id, n]))
       const yById = new Map(nds.map((n) => [n.id, n.position.y]))
+      // current visual slot (fraction of node height) of each handle, so
+      // belts from the same splitter can be ordered by where they leave
+      const slotFrac = (nodeId: string, port: number) => {
+        const n = nodeById.get(nodeId)
+        if (!n) return 0.5
+        if (n.type === 'splitter') {
+          const p = n.data.ports.find((q) => q.port === port)
+          return p ? parseFloat(p.top) / 100 : 0.5
+        }
+        if (n.type === 'merger') {
+          const t = n.data.inputTops?.[port]
+          return t ? parseFloat(t) / 100 : 0.5
+        }
+        return 0.5
+      }
       const outBy = new Map<string, { port: number; y: number }[]>()
       const inBy = new Map<string, { port: number; y: number }[]>()
       for (const e of edges) {
         const srcPort = Number(String(e.sourceHandle ?? 'p0').slice(1))
         const dstPort = Number(String(e.targetHandle ?? 'p0').slice(1))
         const o = outBy.get(e.source) ?? []
-        o.push({ port: srcPort, y: yById.get(e.target) ?? 0 })
+        o.push({
+          port: srcPort,
+          y: (yById.get(e.target) ?? 0) + slotFrac(e.target, dstPort) * 96,
+        })
         outBy.set(e.source, o)
         const i = inBy.get(e.target) ?? []
-        i.push({ port: dstPort, y: yById.get(e.source) ?? 0 })
+        i.push({
+          port: dstPort,
+          y: (yById.get(e.source) ?? 0) + slotFrac(e.source, srcPort) * 96,
+        })
         inBy.set(e.target, i)
       }
       return nds.map((n) => {

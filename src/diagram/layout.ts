@@ -4,7 +4,7 @@ import type { Edge, Node } from '@xyflow/react'
 import { formatFrac } from '../solver/frac'
 import type { NetEdge, NetNode, Solution } from '../solver/types'
 import { BELT_HEX } from './belts'
-import { orthogonalRoute } from './ortho'
+import { orthogonalRoute, type Pt } from './ortho'
 
 export interface SourceData extends Record<string, unknown> {
   rate: string
@@ -130,20 +130,20 @@ export async function layoutSolution(sol: Solution): Promise<{
 
   // y of the handle a belt lands on (merger input slot, else node centre) —
   // ordering by handle height instead of node height avoids one-slot swaps
-  const dstHandleY = (e: NetEdge) => {
+  const dstHandleY = (e: NetEdge, inR: Map<string, number>) => {
     if (kindOf.get(e.dst) === 'merger') {
       const m = mergerIns.get(e.dst) ?? 3
-      const r = inRank.get(`${e.dst}:${e.dstPort}`)
+      const r = inR.get(`${e.dst}:${e.dstPort}`)
       if (r !== undefined)
         return yOf(e.dst) + ((r + 1) / (m + 1)) * heightOf(e.dst)
     }
     return yOf(e.dst) + heightOf(e.dst) / 2
   }
   // y of the handle a belt leaves from (splitter output slot, else centre)
-  const srcHandleY = (e: NetEdge) => {
+  const srcHandleY = (e: NetEdge, outR: Map<string, number>) => {
     if (kindOf.get(e.src) === 'splitter') {
       const cnt = splitterOuts.get(e.src) ?? 2
-      const r = outRank.get(`${e.src}:${e.srcPort}`)
+      const r = outR.get(`${e.src}:${e.srcPort}`)
       if (r !== undefined)
         return yOf(e.src) + ((r + 1) / (cnt + 1)) * heightOf(e.src)
     }
@@ -155,6 +155,9 @@ export async function layoutSolution(sol: Solution): Promise<{
   const inTop = new Map<string, string>()
   const inRank = new Map<string, number>()
   const fillRanks = () => {
+    // keep the previous splitter slots so merger inputs can order by the
+    // exact handle each belt leaves from (node centres on the first pass)
+    const prevOutRank = new Map(outRank)
     outTop.clear()
     outRank.clear()
     inTop.clear()
@@ -166,7 +169,7 @@ export async function layoutSolution(sol: Solution): Promise<{
         .filter((e) => e.dst === n.id)
         .sort(
           (a, b) =>
-            srcHandleY(a) - srcHandleY(b) ||
+            srcHandleY(a, prevOutRank) - srcHandleY(b, prevOutRank) ||
             a.srcPort - b.srcPort ||
             a.dstPort - b.dstPort,
         )
@@ -184,7 +187,7 @@ export async function layoutSolution(sol: Solution): Promise<{
         .filter((e) => e.src === n.id)
         .sort(
           (a, b) =>
-            dstHandleY(a) - dstHandleY(b) ||
+            dstHandleY(a, inRank) - dstHandleY(b, inRank) ||
             a.dstPort - b.dstPort ||
             a.srcPort - b.srcPort,
         )
@@ -317,7 +320,6 @@ export async function layoutSolution(sol: Solution): Promise<{
   const CLEAR = 16
   const edgeById = new Map(sol.edges.map((e) => [e.id, e]))
   const sizeOf = new Map(sol.nodes.map((n) => [n.id, SIZES[n.kind]]))
-  type Pt = { x: number; y: number }
   const segCross = (
     a: Pt,
     b: Pt,
@@ -385,6 +387,116 @@ export async function layoutSolution(sol: Solution): Promise<{
       waypoints.set(eid, pts)
     }
     if (fixed === 0) break
+  }
+
+  // belts that run between the same pair of nodes form a bundle; ELK gives
+  // each belt its own corridor and nested corridors make even a monotone fan
+  // cross itself — rebuild each bundle as a tidy fan with non-crossing
+  // corridors, falling back to the routed path whenever the fan would hit
+  // a node box
+  const boxOf = (id: string) => {
+    const p = pos.get(id)
+    const s = SIZES[kindOf.get(id) ?? 'sink']
+    return p
+      ? { id, l: p.x, t: p.y, r: p.x + s.w, b: p.y + s.h }
+      : { id, l: 0, t: 0, r: 0, b: 0 }
+  }
+  const allBoxes = sol.nodes.map((n) => boxOf(n.id))
+  const segCrossBox = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    bx: { l: number; t: number; r: number; b: number },
+  ) =>
+    Math.max(a.x, b.x) > bx.l &&
+    Math.min(a.x, b.x) < bx.r &&
+    Math.max(a.y, b.y) > bx.t &&
+    Math.min(a.y, b.y) < bx.b
+  const segsCross = (
+    a1: { x: number; y: number },
+    a2: { x: number; y: number },
+    b1: { x: number; y: number },
+    b2: { x: number; y: number },
+  ) => {
+    const cr = (o: Pt, p: Pt, q: Pt) =>
+      (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x)
+    const d1 = cr(a1, a2, b1)
+    const d2 = cr(a1, a2, b2)
+    const d3 = cr(b1, b2, a1)
+    const d4 = cr(b1, b2, a2)
+    return (
+      d1 > 0 !== d2 > 0 && d3 > 0 !== d4 > 0 && Math.abs(d1) + Math.abs(d2) > 1
+    )
+  }
+  const routesCross = (
+    r1: { x: number; y: number }[],
+    r2: { x: number; y: number }[],
+  ) => {
+    for (let i = 1; i < r1.length; i++)
+      for (let j = 1; j < r2.length; j++)
+        if (segsCross(r1[i - 1], r1[i], r2[j - 1], r2[j])) return true
+    return false
+  }
+  const bundles = new Map<string, NetEdge[]>()
+  for (const e of sol.edges) {
+    const key = `${e.src}>${e.dst}`
+    const list = bundles.get(key) ?? []
+    list.push(e)
+    bundles.set(key, list)
+  }
+  for (const [key, group] of bundles) {
+    if (group.length < 2) continue
+    const [srcId, dstId] = key.split('>')
+    const srcBox = boxOf(srcId)
+    const dstBox = boxOf(dstId)
+    const gapL = srcBox.r + 24
+    const gapR = dstBox.l - 24
+    if (gapR - gapL < 40) continue // no room for a fan — keep routed paths
+    const mid = (gapL + gapR) / 2
+    const ends = group.map((e) => {
+      const pts = waypoints.get(e.id)
+      return { exit: pts?.[0], entry: pts?.[pts.length - 1] }
+    })
+    if (ends.some((x) => !x.exit || !x.entry)) continue
+    const n = group.length
+    const spacing = 14
+    const buildFan = (perm: number[]) => {
+      const routes = group.map((_, i) => {
+        const xc = mid + (perm[i] - (n - 1) / 2) * spacing
+        const a = ends[i].exit!
+        const b = ends[i].entry!
+        return a.y === b.y
+          ? [a, b]
+          : [a, { x: xc, y: a.y }, { x: xc, y: b.y }, b]
+      })
+      for (let i = 0; i < routes.length; i++)
+        for (let j = i + 1; j < routes.length; j++)
+          if (routesCross(routes[i], routes[j])) return null
+      for (const route of routes)
+        for (let s = 1; s < route.length; s++)
+          for (const bx of allBoxes)
+            if (
+              bx.id !== srcId &&
+              bx.id !== dstId &&
+              segCrossBox(route[s - 1], route[s], bx)
+            )
+              return null
+      return routes
+    }
+    const perms: number[][] = [[]]
+    for (let i = 0; i < n; i++) {
+      const next: number[][] = []
+      for (const p of perms)
+        for (let k = 0; k <= p.length; k++)
+          next.push([...p.slice(0, k), i, ...p.slice(k)])
+      perms.length = 0
+      perms.push(...next)
+    }
+    let fan: { x: number; y: number }[][] | null = null
+    for (const perm of perms) {
+      fan = buildFan(perm)
+      if (fan) break
+    }
+    if (fan) group.forEach((e, i) => waypoints.set(e.id, fan![i]))
   }
 
   // pick each label spot with clearance from node boxes, preferring the
