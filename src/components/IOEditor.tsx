@@ -196,32 +196,6 @@ export function IOEditor() {
       <section>
         <div className="mb-1 flex items-baseline justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
-            Snap tolerance
-          </h2>
-          <span className="text-xs tabular-nums text-zinc-500">
-            ±{(tolerance * 100).toFixed(1)}%
-          </span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={3}
-          step={0.1}
-          value={tolerance * 100}
-          onChange={(e) => setTolerance(Number(e.target.value) / 100)}
-          className="w-full accent-amber-400"
-          aria-label="Snap tolerance percent"
-        />
-        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-          Some ratios (e.g. exactly 1/5) cannot be built from equal splits and
-          belt taps — those outputs snap to the nearest achievable rate within
-          this tolerance.
-        </p>
-      </section>
-
-      <section>
-        <div className="mb-1 flex items-baseline justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
             Max belt tier
           </h2>
           <span className="text-xs tabular-nums text-zinc-500">
@@ -257,6 +231,32 @@ export function IOEditor() {
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
           Every belt the design places (including taps and overflow) fits this
           tier. Your input belts are exempt.
+        </p>
+      </section>
+
+      <section>
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+            Snap tolerance
+          </h2>
+          <span className="text-xs tabular-nums text-zinc-500">
+            ±{(tolerance * 100).toFixed(1)}%
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={3}
+          step={0.1}
+          value={tolerance * 100}
+          onChange={(e) => setTolerance(Number(e.target.value) / 100)}
+          className="w-full accent-amber-400"
+          aria-label="Snap tolerance percent"
+        />
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          Some ratios (e.g. exactly 1/5) cannot be built from equal splits and
+          belt taps — those outputs snap to the nearest achievable rate within
+          this tolerance.
         </p>
       </section>
     </div>

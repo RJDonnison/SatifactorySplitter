@@ -58,16 +58,16 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-800 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-baseline gap-2 sm:gap-3">
+          <h1 className="text-base font-semibold tracking-tight sm:text-lg">
             SF<span className="text-amber-400">/</span>Splitter
           </h1>
-          <p className="hidden text-sm text-zinc-400 sm:block">
+          <p className="hidden text-sm text-zinc-400 md:block">
             Satisfactory splitter &amp; belt planner
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             className={panelToggle}
