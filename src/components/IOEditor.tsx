@@ -115,29 +115,31 @@ export function IOEditor() {
         addLabel="+ Add input belt"
       >
         {inputs.map((belt, i) => (
-          <div key={belt.id} className="flex items-center gap-2">
-            <span className="w-4 text-right text-xs tabular-nums text-zinc-600">
-              {i + 1}
-            </span>
-            <RateInput
-              value={belt.rate}
-              onChange={(rate) => setInput(belt.id, { rate })}
-            />
-            <span className="text-xs text-zinc-500">/min</span>
-            <div className="ml-auto">
+          <div key={belt.id} className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="w-4 text-right text-xs tabular-nums text-zinc-600">
+                {i + 1}
+              </span>
+              <RateInput
+                value={belt.rate}
+                onChange={(rate) => setInput(belt.id, { rate })}
+              />
+              <span className="text-xs text-zinc-500">/min</span>
+              <button
+                type="button"
+                aria-label="Remove input"
+                onClick={() => removeInput(belt.id)}
+                className="ml-auto rounded-md px-1 text-zinc-600 transition-colors hover:text-red-400"
+              >
+                ×
+              </button>
+            </div>
+            <div className="pl-6">
               <BeltPips
                 rate={belt.rate}
                 onPick={(rate) => setInput(belt.id, { rate })}
               />
             </div>
-            <button
-              type="button"
-              aria-label="Remove input"
-              onClick={() => removeInput(belt.id)}
-              className="rounded-md px-1 text-zinc-600 transition-colors hover:text-red-400"
-            >
-              ×
-            </button>
           </div>
         ))}
       </Section>
@@ -156,33 +158,36 @@ export function IOEditor() {
         {outputs.map((belt, i) => {
           const share = totalIn > 0 ? (belt.rate / totalIn) * 100 : 0
           return (
-            <div key={belt.id} className="flex items-center gap-2">
-              <span className="w-4 text-right text-xs tabular-nums text-zinc-600">
-                {i + 1}
-              </span>
-              <div>
+            <div key={belt.id} className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-4 text-right text-xs tabular-nums text-zinc-600">
+                  {i + 1}
+                </span>
                 <RateInput
                   value={belt.rate}
                   onChange={(rate) => setOutput(belt.id, { rate })}
                 />
-                <span className="ml-1.5 text-[10px] tabular-nums text-zinc-600">
-                  {share > 0 ? `${share.toFixed(share < 10 ? 1 : 0)}%` : ''}
-                </span>
+                <span className="text-xs text-zinc-500">/min</span>
+                {share > 0 && (
+                  <span className="text-[10px] tabular-nums text-zinc-600">
+                    {share.toFixed(share < 10 ? 1 : 0)}%
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label="Remove output"
+                  onClick={() => removeOutput(belt.id)}
+                  className="ml-auto rounded-md px-1 text-zinc-600 transition-colors hover:text-red-400"
+                >
+                  ×
+                </button>
               </div>
-              <div className="ml-auto">
+              <div className="pl-6">
                 <BeltPips
                   rate={belt.rate}
                   onPick={(rate) => setOutput(belt.id, { rate })}
                 />
               </div>
-              <button
-                type="button"
-                aria-label="Remove output"
-                onClick={() => removeOutput(belt.id)}
-                className="rounded-md px-1 text-zinc-600 transition-colors hover:text-red-400"
-              >
-                ×
-              </button>
             </div>
           )
         })}
