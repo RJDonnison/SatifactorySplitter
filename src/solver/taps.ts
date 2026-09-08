@@ -206,16 +206,19 @@ export interface TapPlan {
 /**
  * Plan a chain of taps peeling belt-speed amounts off the trunk, largest
  * coins first. A 3-port splitter may carry two taps at once (cheaper than
- * two chained 2-port taps). If a coin cannot satisfy the validity rule the
- * whole group falls back to the (split-solved) tail and planning restarts.
+ * two chained 2-port taps). Groups in `defer` are left to the tail instead
+ * of being tapped (a target equal to the remainder flow needs no tap at
+ * all). If a coin cannot satisfy the validity rule the whole group falls
+ * back to the (split-solved) tail and planning restarts.
  */
 export function planTapChain(
   Rf: Frac,
   decompByGid: (TargetDecomp | null)[],
   allowPair: boolean,
+  defer: ReadonlySet<number> = new Set(),
 ): TapPlan | null {
   const eligible = decompByGid
-    .map((d, gid) => (d ? { gid, d } : null))
+    .map((d, gid) => (d !== null && !defer.has(gid) ? { gid, d } : null))
     .filter((x): x is { gid: number; d: TargetDecomp } => x !== null)
   const dropped = new Set<number>()
   for (;;) {
@@ -363,6 +366,19 @@ export function buildTapChain(
       if (d === 1) {
         pushLeaf(assign[leafIdx] ?? ovfGid, end)
         leafIdx++
+        return
+      }
+      // a subtree whose leaves all drain to overflow stays on one belt
+      let allOvf = true
+      for (let j = leafIdx; j < leafIdx + d; j++) {
+        if (assign[j] !== undefined) {
+          allOvf = false
+          break
+        }
+      }
+      if (allOvf) {
+        pushLeaf(ovfGid, end)
+        leafIdx += d
         return
       }
       const p = d % 3 === 0 ? 3 : 2

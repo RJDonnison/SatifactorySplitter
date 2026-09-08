@@ -125,7 +125,7 @@ export function buildShareTree(
   const sid = b.splitter(
     Array.from({ length: tree.ports }, () => ({ limited: false as const })),
   )
-  b.connect(entry.node, entry.port, sid, 0, entry.rate)
+  b.connect(entry.node, entry.port, sid, 0, entry.rate, entry.tapMk)
   const childRate = F.div(entry.rate, frac(tree.ports))
   tree.children.forEach((c, i) =>
     buildShareTree(

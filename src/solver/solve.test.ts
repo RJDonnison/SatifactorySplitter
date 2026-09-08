@@ -85,11 +85,12 @@ describe('solve — exact equal splits', () => {
     expect(verify(s).ok).toBe(true)
   })
 
-  it('240 -> 60,60,120 uses two splitters exactly', () => {
+  it('240 -> 60,60,120 uses a single splitter with two Mk.1 taps', () => {
     const s = S([240], [60, 60, 120])
     expect(s.ok).toBe(true)
-    expect(totalBuildings(s)).toBe(2)
+    expect(totalBuildings(s)).toBe(1)
     expect(ratesByTarget(s)).toEqual({ out1: 60, out2: 60, out3: 120 })
+    expect(s.edges.filter((e) => e.tapMk === 1).length).toBe(2)
     expect(verify(s).ok).toBe(true)
   })
 
@@ -155,6 +156,36 @@ describe('solve — belt taps', () => {
   })
 })
 
+describe('solve — tail deferral (user reports)', () => {
+  it('780 -> 60,15,15,150 is exact in 7 buildings, not a tap cascade', () => {
+    const s = S([780], [60, 15, 15, 150])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(totalBuildings(s)).toBeLessThanOrEqual(7)
+    expect(ratesByTarget(s)).toEqual({
+      out1: 60,
+      out2: 15,
+      out3: 15,
+      out4: 150,
+    })
+    expect(verify(s).ok).toBe(true)
+  })
+
+  it('270 -> 60,15,15,150 is exact in 3 buildings via tap3 + tail', () => {
+    const s = S([270], [60, 15, 15, 150])
+    expect(s.ok).toBe(true)
+    expect(s.approximateCount).toBe(0)
+    expect(totalBuildings(s)).toBeLessThanOrEqual(3)
+    expect(ratesByTarget(s)).toEqual({
+      out1: 60,
+      out2: 15,
+      out3: 15,
+      out4: 150,
+    })
+    expect(verify(s).ok).toBe(true)
+  })
+})
+
 describe('solve — approximation', () => {
   it('780 -> 156,624 snaps within tolerance and is flagged approximate', () => {
     const s = S([780], [156, 624])
@@ -206,21 +237,17 @@ describe('solve — approximation', () => {
     expect(r.out1).toBe(60)
     expect(r.out2).toBe(150)
     expect(Math.abs(r.out3 - 2) / 2).toBeLessThanOrEqual(0.02)
-    expect(s.edges.some((e) => e.tapMk === 2)).toBe(true)
-    expect(
-      s.warnings.some((w) => w.text.includes('exceeds the requested')),
-    ).toBe(true)
+    expect(s.edges.some((e) => e.tapMk !== null)).toBe(true)
+    expect(s.warnings.some((w) => w.text.includes('snapped'))).toBe(true)
     expect(verify(s).ok).toBe(true)
   })
 
-  it('780 -> 50 is exact via two split Mk.1 taps (30 + 20 merged)', () => {
+  it('780 -> 50 is exact via Mk.1 piece taps', () => {
     const s = S([780], [50])
     expect(s.ok).toBe(true)
     expect(s.approximateCount).toBe(0)
     expect(ratesByTarget(s).out1).toBe(50)
-    // two piece taps, both on 60/min Mk.1 belts
-    const pieceTaps = s.edges.filter((e) => e.tapMk === 1)
-    expect(pieceTaps.length).toBeGreaterThanOrEqual(2)
+    expect(s.edges.some((e) => e.tapMk === 1)).toBe(true)
     expect(verify(s).ok).toBe(true)
   })
 

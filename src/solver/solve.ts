@@ -1,5 +1,5 @@
 import { F, frac, formatFrac, type Frac } from './frac'
-import { speedOf } from './gameData'
+import { BELT_SPEEDS, speedOf } from './gameData'
 import { NetBuilder, buildTrunk, resetNetIds, type BeltEnd } from './net'
 import {
   bestTree,
@@ -9,7 +9,12 @@ import {
   resetShares,
   type ShareGroup,
 } from './shares'
-import { buildTapChain, decomposeTarget, planTapChain } from './taps'
+import {
+  buildTapChain,
+  decomposeTarget,
+  mkForSpeed,
+  planTapChain,
+} from './taps'
 import type { Solution, SolveInput, TargetSpec, Warning } from './types'
 import { verify } from './verify'
 
@@ -106,16 +111,31 @@ function buildCandidates(
     notes,
   )
   if (pure) candidates.push(pure)
+  const decompByGid = targets.map((t) => decomposeTarget(t.rate, maxMk))
+  // Leaving a group untapped (fed from the tail instead) is often cheaper
+  // than peeling its coins, so try each single deferral alongside the default.
+  const deferSets: ReadonlySet<number>[] = [new Set<number>()]
+  decompByGid.forEach((d, gid) => {
+    if (d) deferSets.push(new Set([gid]))
+  })
   for (const allowPair of [true, false]) {
-    const tap = tapSolution(
-      inputRates,
-      Rf,
-      targets,
-      tolerance,
-      maxMk,
-      allowPair,
-    )
-    if (tap) candidates.push(tap)
+    for (const defer of deferSets) {
+      const tap = tapSolution(
+        inputRates,
+        Rf,
+        targets,
+        tolerance,
+        maxMk,
+        allowPair,
+        defer,
+        decompByGid,
+      )
+      if (tap) candidates.push(tap)
+    }
+  }
+  for (const c of BELT_SPEEDS) {
+    const chunk = chunkSolution(inputRates, Rf, targets, tolerance, maxMk, c)
+    if (chunk) candidates.push(chunk)
   }
   return candidates
 }
@@ -308,7 +328,9 @@ function pureSplitSolution(
   return sol
 }
 
-/** Tap-chain candidate: peel belt-speed amounts, solve the tail with splits. */
+/** Tap-chain candidate: peel belt-speed amounts, solve the tail with splits.
+ * `defer` names target groups left to the tail even though they could be
+ * tapped — a target that matches the remainder flow needs no tap at all. */
 function tapSolution(
   inputRates: number[],
   Rf: Frac,
@@ -316,10 +338,11 @@ function tapSolution(
   tolerance: number,
   maxMk: number,
   allowPair: boolean,
+  defer: ReadonlySet<number>,
+  decompByGid: ReturnType<typeof decomposeTarget>[],
 ): Solution | null {
-  const decompByGid = targets.map((t) => decomposeTarget(t.rate, maxMk))
   if (!decompByGid.some((c) => c !== null)) return null
-  const plan = planTapChain(Rf, decompByGid, allowPair)
+  const plan = planTapChain(Rf, decompByGid, allowPair, defer)
   if (!plan) return null
 
   const usedGids = new Set<number>()
@@ -415,6 +438,77 @@ function tapSolution(
       text: 'Taps (limited belts) rely on belt saturation: keep every remainder belt draining or items will back up.',
     })
   }
+  const sol = finish(b, targets, approximate, warnings)
+  sol.inputRate = Rf
+  return sol
+}
+
+/** Chunk candidate: tap one belt-speed chunk off the trunk and solve every
+ * target inside it with a pure split; the rest of the input overflows. This
+ * is the natural shape when the input far exceeds the demand (780 in, 240
+ * needed: peel a 270 chunk instead of tapping each output separately). */
+function chunkSolution(
+  inputRates: number[],
+  Rf: Frac,
+  targets: TargetSpec[],
+  tolerance: number,
+  maxMk: number,
+  c: number,
+): Solution | null {
+  const mk = mkForSpeed(c)
+  if (mk > maxMk) return null
+  const totalOut = targets.reduce((a, t) => a + t.rate, 0)
+  if (c < totalOut) return null // the chunk must be able to carry every target
+  if (F.cmp(frac(c), F.div(Rf, frac(2))) > 0) return null // cannot saturate
+  const chunkR = frac(c)
+  const tailFr = targets.map((t) => frac(t.rate))
+  const exact = chooseExactN(chunkR, tailFr)
+  const snap = exact ?? snapWithFallback(chunkR, tailFr, tolerance)
+  if (!snap) return null
+  const { N, ks } = snap
+  const rates = ks.map((k) => shareRate(k, chunkR, N))
+  const approximate = targets.map((t, i) => !F.eq(rates[i], frac(t.rate)))
+
+  const b = new NetBuilder(maxMk)
+  const entry = buildTrunk(b, inputRates)
+  const sid = b.splitter([{ limited: true, mk }, { limited: false }])
+  b.connect(entry.node, entry.port, sid, 0, entry.rate)
+  const chunk: BeltEnd = { node: sid, port: 0, rate: chunkR, tapMk: mk }
+  const drain: BeltEnd = {
+    node: sid,
+    port: 1,
+    rate: F.sub(Rf, chunkR),
+    tapMk: null,
+  }
+  const ovfGid = targets.length
+  const overflowK = N - ks.reduce((a, k) => a + k, 0)
+  const groups: ShareGroup[] = ks
+    .map((k, gid) => ({ gid, k }))
+    .filter((g) => g.k > 0)
+  if (overflowK > 0) groups.push({ gid: ovfGid, k: overflowK })
+  resetShares()
+  const tree = bestTree(N, groups)
+  if (!tree) return null
+  const leafPorts = new Map<number, BeltEnd[]>()
+  buildShareTree(b, tree, chunk, leafPorts)
+  const sinks = targets.map((t, i) => b.sink(t.id, rates[i], approximate[i]))
+  targets.forEach((_, i) => b.mergeInto(leafPorts.get(i) ?? [], sinks[i]))
+  const warnings = approxWarnings(targets, approximate, rates, tolerance)
+  const total = attachOverflow(
+    b,
+    [...(leafPorts.get(ovfGid) ?? []), drain],
+    maxMk,
+  )
+  if (!F.isZero(total)) {
+    warnings.push({
+      level: 'info',
+      text: `${formatFrac(total)}/min surplus is routed to an overflow belt.`,
+    })
+  }
+  warnings.push({
+    level: 'info',
+    text: 'Taps (limited belts) rely on belt saturation: keep every remainder belt draining or items will back up.',
+  })
   const sol = finish(b, targets, approximate, warnings)
   sol.inputRate = Rf
   return sol
