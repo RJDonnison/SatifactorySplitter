@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { NetDoc } from './doc'
 import { readProblemFromUrl } from './urlState'
 
 export interface IOBelt {
@@ -27,6 +28,14 @@ interface AppState extends Problem {
   setOutput: (id: string, patch: Partial<Omit<IOBelt, 'id'>>) => void
   setTolerance: (t: number) => void
   setMaxMk: (mk: number) => void
+  /** 'auto' renders the solver layout; 'manual' edits the doc */
+  mode: 'auto' | 'manual'
+  /** parked while in auto mode — restored when editing resumes */
+  doc: NetDoc | null
+  enterManual: (doc: NetDoc) => void
+  exitManual: () => void
+  /** the single mutator for manual edits (keeps undo/redo cheap later) */
+  applyDoc: (fn: (doc: NetDoc) => NetDoc) => void
 }
 
 let nextId = 0
@@ -70,4 +79,9 @@ export const useStore = create<AppState>((set) => ({
     })),
   setTolerance: (t) => set({ tolerance: t }),
   setMaxMk: (mk) => set({ maxMk: Math.min(6, Math.max(1, Math.round(mk))) }),
+  mode: 'auto',
+  doc: null,
+  enterManual: (doc) => set({ mode: 'manual', doc }),
+  exitManual: () => set({ mode: 'auto' }),
+  applyDoc: (fn) => set((s) => (s.doc ? { doc: fn(s.doc) } : {})),
 }))

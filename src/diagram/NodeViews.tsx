@@ -66,6 +66,12 @@ function OverflowView({ data }: NodeProps<Node<OverflowData, 'overflow'>>) {
         id="p0"
         className={`${handleBase} !bg-amber-400`}
       />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="p0"
+        className={`${handleBase} !bg-amber-400`}
+      />
     </div>
   )
 }

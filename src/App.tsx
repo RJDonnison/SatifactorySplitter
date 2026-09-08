@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from './state/store'
+import { snapshotDoc } from './state/doc'
 import { solve } from './solver/solve'
 import { Diagram } from './diagram/Diagram'
+import { ManualDiagram } from './diagram/ManualDiagram'
 import { IOEditor } from './components/IOEditor'
 import { Warnings } from './components/Warnings'
 import { Summary } from './components/Summary'
@@ -29,6 +31,9 @@ export default function App() {
   const outputs = useStore((s) => s.outputs)
   const tolerance = useStore((s) => s.tolerance)
   const maxMk = useStore((s) => s.maxMk)
+  const mode = useStore((s) => s.mode)
+  const enterManual = useStore((s) => s.enterManual)
+  const exitManual = useStore((s) => s.exitManual)
 
   // panels default open on roomy screens, toggleable everywhere; on small
   // screens they open as overlay drawers over the diagram
@@ -56,6 +61,17 @@ export default function App() {
     [inputs, outputs, tolerance, maxMk],
   )
 
+  // entering manual restores a parked doc if the user edited one earlier,
+  // otherwise snapshots the layout the user sees (blank canvas when the
+  // problem is unsolvable); exiting parks the doc for later
+  const toggleMode = async () => {
+    if (mode === 'manual') {
+      exitManual()
+      return
+    }
+    enterManual(useStore.getState().doc ?? (await snapshotDoc(solution)))
+  }
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-800 px-3 py-2.5 sm:px-4 sm:py-3">
@@ -68,6 +84,14 @@ export default function App() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            className={panelToggle}
+            aria-expanded={mode === 'manual'}
+            onClick={toggleMode}
+          >
+            {mode === 'manual' ? 'Done editing' : 'Edit layout'}
+          </button>
           <button
             type="button"
             className={panelToggle}
@@ -118,11 +142,35 @@ export default function App() {
               ×
             </button>
           </div>
-          <IOEditor />
-          <Warnings solution={solution} />
+          {mode === 'manual' ? (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-zinc-200">
+                Manual editing
+              </h2>
+              <ul className="list-disc space-y-1 pl-4 text-xs text-zinc-400">
+                <li>Add buildings from the palette on the canvas.</li>
+                <li>Drag from a port to a port to draw a belt.</li>
+                <li>Select and press Backspace to delete.</li>
+                <li>Drag nodes to arrange — they snap to a 20px grid.</li>
+              </ul>
+              <p className="text-xs text-zinc-500">
+                Edits are kept when you switch back to automatic solving. Rate
+                simulation on manual layouts arrives in the next phase.
+              </p>
+            </div>
+          ) : (
+            <>
+              <IOEditor />
+              <Warnings solution={solution} />
+            </>
+          )}
         </aside>
         <section className="relative min-w-0 flex-1 bg-zinc-950">
-          <Diagram solution={solution} />
+          {mode === 'manual' ? (
+            <ManualDiagram />
+          ) : (
+            <Diagram solution={solution} />
+          )}
         </section>
         <aside
           className={`${showSummary ? 'flex' : 'hidden'} fixed inset-y-0 right-0 z-40 w-72 max-w-[85vw] flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-4 lg:static lg:z-auto lg:max-w-none lg:shrink-0`}
