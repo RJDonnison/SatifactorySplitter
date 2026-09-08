@@ -5,7 +5,9 @@ import {
   slotPct,
   type SolutionNodeType,
 } from '../diagram/layout'
-import { F } from '../solver/frac'
+import { F, formatFrac, frac } from '../solver/frac'
+import { minMkFor, speedOf } from '../solver/gameData'
+import type { SimResult } from '../solver/simulate'
 import type { PortSpec, Solution } from '../solver/types'
 
 /**
@@ -220,31 +222,65 @@ export async function snapshotDoc(sol: Solution): Promise<NetDoc> {
 }
 
 /** map the intent-only doc onto xyflow nodes/edges for the shared node views */
-export function mapDocToFlow(doc: NetDoc): {
+export function mapDocToFlow(
+  doc: NetDoc,
+  sim?: SimResult | null,
+): {
   nodes: SolutionNodeType[]
   edges: Edge[]
 } {
   const fmt = (r: number) =>
     `${Number.isInteger(r) ? r : Number(r.toFixed(2))}/min`
+  const inEdgeOf = (id: string) => doc.edges.find((e) => e.dst === id)
   const nodes = doc.nodes.map((n): SolutionNodeType => {
     const base = { id: n.id, position: { x: n.x, y: n.y }, draggable: true }
     switch (n.kind) {
       case 'source':
         return { ...base, type: 'source', data: { rate: fmt(n.rate) } }
-      case 'sink':
+      case 'sink': {
+        const s = sim?.sinks.get(n.id)
+        if (!s)
+          return {
+            ...base,
+            type: 'sink',
+            data: { label: n.label, rate: fmt(n.rate), approximate: false },
+          }
+        const ok = F.cmp(F.sub(s.achieved, s.requested), frac(-1n, 1000n)) >= 0
         return {
           ...base,
           type: 'sink',
-          data: { label: n.label, rate: fmt(n.rate), approximate: false },
+          data: {
+            label: n.label,
+            rate: ok
+              ? `${formatFrac(s.achieved)}/min`
+              : `${formatFrac(s.achieved)}/min · wants ${fmt(n.rate)}`,
+            approximate: !ok,
+          },
         }
-      case 'overflow':
-        return { ...base, type: 'overflow', data: { rate: '' } }
-      case 'splitter':
+      }
+      case 'overflow': {
+        const v = sim?.valves.get(n.id)
+        const rate = v
+          ? `${formatFrac(v.outflow)}/min${
+              F.isZero(v.discarded) ? '' : ` −${formatFrac(v.discarded)} lost`
+            }`
+          : ''
+        return { ...base, type: 'overflow', data: { rate } }
+      }
+      case 'splitter': {
+        const inEdge = inEdgeOf(n.id)
+        const inRate =
+          sim && inEdge
+            ? (() => {
+                const r = sim.edges.get(inEdge.id)
+                return r ? `${formatFrac(r)}/min` : null
+              })()
+            : null
         return {
           ...base,
           type: 'splitter',
           data: {
-            inRate: null,
+            inRate,
             ports: n.ports.map((p, i) => ({
               hex: p.limited ? BELT_HEX[p.mk - 1] : '#3f3f46',
               tapMk: p.limited ? p.mk : null,
@@ -253,6 +289,7 @@ export function mapDocToFlow(doc: NetDoc): {
             })),
           },
         }
+      }
       case 'merger':
         return {
           ...base,
@@ -261,13 +298,168 @@ export function mapDocToFlow(doc: NetDoc): {
         }
     }
   })
-  const edges: Edge[] = doc.edges.map((e) => ({
-    id: e.id,
-    source: e.src,
-    target: e.dst,
-    sourceHandle: `p${e.srcPort}`,
-    targetHandle: `p${e.dstPort}`,
-    style: { stroke: '#71717a', strokeWidth: 2 },
-  }))
+  const edges: Edge[] = doc.edges.map((e) => {
+    const r = sim?.edges.get(e.id)
+    if (!r || F.isZero(r))
+      return {
+        id: e.id,
+        source: e.src,
+        target: e.dst,
+        sourceHandle: `p${e.srcPort}`,
+        targetHandle: `p${e.dstPort}`,
+        style: { stroke: '#3f3f46', strokeWidth: 2 },
+      }
+    const v = F.toNumber(r)
+    const fitsMax = minMkFor(r, 6) !== null
+    const fitsPin = e.mk === null || v <= speedOf(e.mk)
+    const mk = e.mk ?? minMkFor(r, 6)!
+    const stroke = !fitsMax || !fitsPin ? '#ef4444' : BELT_HEX[mk - 1]
+    return {
+      id: e.id,
+      source: e.src,
+      target: e.dst,
+      sourceHandle: `p${e.srcPort}`,
+      targetHandle: `p${e.dstPort}`,
+      label: `${formatFrac(r)}/min`,
+      labelStyle: { fill: '#a1a1aa', fontSize: 10 },
+      labelBgStyle: { fill: '#09090b' },
+      style: { stroke, strokeWidth: 2 },
+    }
+  })
   return { nodes, edges }
+}
+
+/** set the rate of a source or sink node */
+export const setNodeRate = (d: NetDoc, id: string, rate: number): NetDoc => ({
+  ...d,
+  nodes: d.nodes.map((n) =>
+    n.id === id &&
+    n.kind !== 'overflow' &&
+    n.kind !== 'splitter' &&
+    n.kind !== 'merger'
+      ? ({ ...n, rate } as DocNode)
+      : n,
+  ),
+})
+
+export const setSinkLabel = (d: NetDoc, id: string, label: string): NetDoc => ({
+  ...d,
+  nodes: d.nodes.map((n) =>
+    n.id === id && n.kind === 'sink' ? { ...n, label } : n,
+  ),
+})
+
+/** pin a splitter port to a tap Mk (null = plain open port) */
+export const setPortTap = (
+  d: NetDoc,
+  id: string,
+  port: number,
+  mk: number | null,
+): NetDoc => ({
+  ...d,
+  nodes: d.nodes.map((n) =>
+    n.id === id && n.kind === 'splitter' && n.ports[port]
+      ? {
+          ...n,
+          ports: n.ports.map((p, i) =>
+            i === port
+              ? mk === null
+                ? { limited: false }
+                : { limited: true, mk }
+              : p,
+          ),
+        }
+      : n,
+  ),
+})
+
+/** resize a splitter between 2 and 3 ports, dropping belts from removed ports */
+export const setSplitterPorts = (
+  d: NetDoc,
+  id: string,
+  count: 2 | 3,
+): NetDoc => ({
+  ...d,
+  nodes: d.nodes.map((n) =>
+    n.id === id && n.kind === 'splitter'
+      ? {
+          ...n,
+          ports:
+            n.ports.length === count
+              ? n.ports
+              : n.ports.length < count
+                ? [...n.ports, { limited: false }]
+                : n.ports.slice(0, count),
+        }
+      : n,
+  ),
+  edges:
+    d.nodes.find((n) => n.id === id)?.kind === 'splitter'
+      ? d.edges.filter((e) => !(e.src === id && e.srcPort >= count))
+      : d.edges,
+})
+
+/** pin a belt to a Mk (null = auto-minimum) */
+export const setEdgeMk = (
+  d: NetDoc,
+  edgeId: string,
+  mk: number | null,
+): NetDoc => ({
+  ...d,
+  edges: d.edges.map((e) => (e.id === edgeId ? { ...e, mk } : e)),
+})
+
+/**
+ * Auto-arrange: run the ELK layered layout over the doc's structure (rates
+ * are irrelevant to topology) and adopt the resulting positions.
+ */
+export async function autoArrangeDoc(d: NetDoc): Promise<NetDoc> {
+  const zero = frac(0)
+  const pseudo: Solution = {
+    ok: true,
+    nodes: d.nodes.map((n): Solution['nodes'][number] => {
+      switch (n.kind) {
+        case 'source':
+          return { id: n.id, kind: 'source', rate: zero }
+        case 'sink':
+          return {
+            id: n.id,
+            kind: 'sink',
+            target: n.id,
+            rate: zero,
+            approximate: false,
+          }
+        case 'overflow':
+          return { id: n.id, kind: 'overflow', rate: zero }
+        case 'splitter':
+          return { id: n.id, kind: 'splitter', ports: n.ports }
+        case 'merger':
+          return { id: n.id, kind: 'merger' }
+      }
+    }),
+    edges: d.edges.map((e) => ({
+      id: e.id,
+      src: e.src,
+      srcPort: e.srcPort,
+      dst: e.dst,
+      dstPort: e.dstPort,
+      rate: zero,
+      minMk: 1,
+      tapMk: null,
+    })),
+    warnings: [],
+    inputRate: zero,
+    outputIds: [],
+    buildings: { splitters: 0, mergers: 0 },
+    excess: 0,
+    approximateCount: 0,
+  }
+  const laid = await layoutSolution(pseudo)
+  const pos = new Map(laid.nodes.map((n) => [n.id, n.position]))
+  let out = d
+  for (const n of d.nodes) {
+    const p = pos.get(n.id)
+    if (p) out = moveNode(out, n.id, p.x, p.y)
+  }
+  return out
 }

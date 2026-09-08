@@ -63,6 +63,57 @@ test('max belt tier caps the design with a clear error', async ({ page }) => {
   await expect(page.getByText(/needs Mk\.4/i)).toHaveCount(0)
 })
 
+test.describe('manual mode', () => {
+  test('edits a snapshot with palette, inspector, and live warnings', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Edit layout' }).click()
+    await expect(page.getByText('Manual editing')).toBeVisible()
+    // snapshot of 780 -> 390 + 390 carried over
+    await expect(page.locator('.react-flow__node')).toHaveCount(4)
+
+    // palette add
+    await page.getByRole('button', { name: 'Overflow valve' }).click()
+    await expect(page.locator('.react-flow__node')).toHaveCount(5)
+
+    // selecting a node opens the inspector
+    await page.locator('.react-flow__node').first().click()
+    const inspector = page.getByTestId('inspector')
+    await expect(inspector).toBeVisible()
+    await expect(inspector.getByText('rate /min')).toBeVisible()
+
+    // deselect: a fresh output with no belt shows a live warning
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Output', exact: true }).click()
+    await expect(page.getByTestId('manual-warnings')).toContainText(
+      /receives nothing/,
+    )
+  })
+
+  test('restores a manual layout from the url', async ({ page }) => {
+    await page.getByRole('button', { name: 'Edit layout' }).click()
+    await page.getByRole('button', { name: 'Overflow valve' }).click()
+    await expect(page.locator('.react-flow__node')).toHaveCount(5)
+    // the doc is packed into ?s=
+    await page.reload()
+    await expect(
+      page.getByRole('button', { name: 'Done editing' }),
+    ).toBeVisible()
+    await expect(page.locator('.react-flow__node')).toHaveCount(5)
+  })
+
+  test('regenerate asks for confirmation', async ({ page }) => {
+    await page.getByRole('button', { name: 'Edit layout' }).click()
+    await page.getByRole('button', { name: 'Overflow valve' }).click()
+    await expect(page.locator('.react-flow__node')).toHaveCount(5)
+
+    page.once('dialog', (d) => d.accept())
+    await page.getByRole('button', { name: 'Regenerate from problem…' }).click()
+    // fresh snapshot of 780 -> 390 + 390 replaces the edited doc
+    await expect(page.locator('.react-flow__node')).toHaveCount(4)
+  })
+})
+
 test.describe('small screens', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 

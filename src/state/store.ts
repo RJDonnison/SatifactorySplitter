@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { NetDoc } from './doc'
-import { readProblemFromUrl } from './urlState'
+import { readStateFromUrl } from './urlState'
 
 export interface IOBelt {
   id: string
@@ -51,8 +51,10 @@ const defaultProblem: Problem = {
   maxMk: 6,
 }
 
-/** initial state: a shared problem from ?s= if present, else the default demo */
-const initialProblem: Problem = readProblemFromUrl() ?? defaultProblem
+/** initial state: a shared link (?s=) restores the problem, and a manual
+ * layout section (n) additionally restores editing mode + the doc */
+const initial = readStateFromUrl()
+const initialProblem: Problem = initial.problem ?? defaultProblem
 
 export const useStore = create<AppState>((set) => ({
   inputs: initialProblem.inputs,
@@ -79,8 +81,8 @@ export const useStore = create<AppState>((set) => ({
     })),
   setTolerance: (t) => set({ tolerance: t }),
   setMaxMk: (mk) => set({ maxMk: Math.min(6, Math.max(1, Math.round(mk))) }),
-  mode: 'auto',
-  doc: null,
+  mode: initial.manual ? 'manual' : 'auto',
+  doc: initial.doc,
   enterManual: (doc) => set({ mode: 'manual', doc }),
   exitManual: () => set({ mode: 'auto' }),
   applyDoc: (fn) => set((s) => (s.doc ? { doc: fn(s.doc) } : {})),

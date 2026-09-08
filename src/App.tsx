@@ -7,7 +7,7 @@ import { ManualDiagram } from './diagram/ManualDiagram'
 import { IOEditor } from './components/IOEditor'
 import { Warnings } from './components/Warnings'
 import { Summary } from './components/Summary'
-import { writeProblemToUrl } from './state/urlState'
+import { writeStateToUrl } from './state/urlState'
 
 export const REPO_URL = 'https://github.com/RJDonnison/SatifactorySplitter'
 
@@ -32,6 +32,7 @@ export default function App() {
   const tolerance = useStore((s) => s.tolerance)
   const maxMk = useStore((s) => s.maxMk)
   const mode = useStore((s) => s.mode)
+  const doc = useStore((s) => s.doc)
   const enterManual = useStore((s) => s.enterManual)
   const exitManual = useStore((s) => s.exitManual)
 
@@ -44,11 +45,12 @@ export default function App() {
     () => typeof window === 'undefined' || window.innerWidth >= 1280,
   )
 
-  // keep the URL in sync so a refresh or copy keeps the current problem
-  // (initial state itself is restored from ?s= in the store)
+  // keep the URL in sync so a refresh or copy keeps the current state
+  // (initial state itself is restored from ?s= in the store); manual mode
+  // packs the layout doc into the same link (see urlState `n` section)
   useEffect(() => {
-    writeProblemToUrl({ inputs, outputs, tolerance, maxMk })
-  }, [inputs, outputs, tolerance, maxMk])
+    writeStateToUrl({ inputs, outputs, tolerance, maxMk }, mode, doc)
+  }, [inputs, outputs, tolerance, maxMk, mode, doc])
 
   const solution = useMemo(
     () =>
@@ -70,6 +72,18 @@ export default function App() {
       return
     }
     enterManual(useStore.getState().doc ?? (await snapshotDoc(solution)))
+  }
+
+  // replace the edited layout with a fresh snapshot of the solver result
+  // (destructive, so it needs a confirm)
+  const regenerate = async () => {
+    if (
+      !window.confirm(
+        'Replace the current manual layout with a fresh layout from the problem?',
+      )
+    )
+      return
+    enterManual(await snapshotDoc(solution))
   }
 
   return (
@@ -150,13 +164,20 @@ export default function App() {
               <ul className="list-disc space-y-1 pl-4 text-xs text-zinc-400">
                 <li>Add buildings from the palette on the canvas.</li>
                 <li>Drag from a port to a port to draw a belt.</li>
+                <li>Select a node or belt to edit rates, taps, and belt Mk.</li>
                 <li>Select and press Backspace to delete.</li>
-                <li>Drag nodes to arrange — they snap to a 20px grid.</li>
               </ul>
               <p className="text-xs text-zinc-500">
-                Edits are kept when you switch back to automatic solving. Rate
-                simulation on manual layouts arrives in the next phase.
+                Belt rates and warnings update live on the canvas. Edits are
+                kept when you switch back to automatic solving.
               </p>
+              <button
+                type="button"
+                onClick={regenerate}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-amber-500 hover:text-amber-300"
+              >
+                Regenerate from problem…
+              </button>
             </div>
           ) : (
             <>
