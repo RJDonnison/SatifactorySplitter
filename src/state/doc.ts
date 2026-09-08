@@ -127,6 +127,28 @@ export const moveNode = (
   nodes: d.nodes.map((n) => (n.id === id ? ({ ...n, x, y } as DocNode) : n)),
 })
 
+/** first unused input port of a node (null when every port has a belt) */
+export const firstFreeInPort = (d: NetDoc, id: string): number | null => {
+  const n = d.nodes.find((x) => x.id === id)
+  if (!n) return null
+  const used = new Set(
+    d.edges.filter((e) => e.dst === id).map((e) => e.dstPort),
+  )
+  for (let p = 0; p < inPorts(n); p++) if (!used.has(p)) return p
+  return null
+}
+
+/** first unused output port of a node (null when every port has a belt) */
+export const firstFreeOutPort = (d: NetDoc, id: string): number | null => {
+  const n = d.nodes.find((x) => x.id === id)
+  if (!n) return null
+  const used = new Set(
+    d.edges.filter((e) => e.src === id).map((e) => e.srcPort),
+  )
+  for (let p = 0; p < outPorts(n); p++) if (!used.has(p)) return p
+  return null
+}
+
 export const newSource = (x: number, y: number): DocNode => ({
   id: uid('n'), // doc-local ids never collide with snapshot solver ids (src/sp/mg/sink/ovf)
   kind: 'source',

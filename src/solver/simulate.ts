@@ -112,13 +112,28 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
   const valves = new Map<string, ValveSim>()
   const valveCap = frac(speedOf(maxMk))
 
+  /**
+   * a belt pinned to a belt Mk is respected: it never carries more than the
+   * tier allows, and whatever exceeds the cap backs up with a warning
+   */
+  const limited = (e: SimEdge, r: Frac): Frac => {
+    if (e.mk === null) return r
+    const cap = frac(speedOf(e.mk))
+    if (F.cmp(r, cap) <= 0) return r
+    warn(
+      'warn',
+      `a Mk.${e.mk} belt carries at most ${speedOf(e.mk)}/min — ${fmt(F.sub(r, cap))} backs up`,
+    )
+    return cap
+  }
+
   /** evaluate one node from the current edge rates (idempotent, pure) */
   const evalNode = (n: SimNode) => {
     switch (n.kind) {
       case 'source': {
         const r = numToFrac(n.rate ?? 0)
         const o = outEdges(n.id)[0]
-        if (o) rates.set(o.id, r)
+        if (o) rates.set(o.id, limited(o, r))
         else if (!F.isZero(r))
           warn(
             'info',
@@ -135,10 +150,14 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
             warn('warn', `splitter receives ${fmt(r)} but has no output belts`)
           return
         }
-        const pr = portRates(
-          r,
-          o.map((e) => n.ports?.[e.srcPort] ?? { limited: false }),
-        )
+        // a belt pinned to a belt Mk caps its port exactly like a tap would,
+        // so users can respect belt types without configuring splitter taps
+        const specOf = (e: SimEdge): PortSpec => {
+          const p = n.ports?.[e.srcPort] ?? { limited: false }
+          if (e.mk === null) return p
+          return { limited: true, mk: Math.min(p.limited ? p.mk : e.mk, e.mk) }
+        }
+        const pr = portRates(r, o.map(specOf))
         if (pr === null) {
           // every port is a limited tap that cannot absorb the inflow
           warn(
@@ -146,8 +165,8 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
             `splitter stalls: ${fmt(r)} arrives but the taps cannot carry it all away`,
           )
           for (const e of o) {
-            const p = n.ports?.[e.srcPort]
-            rates.set(e.id, frac(p?.limited ? speedOf(p.mk) : 0))
+            const cap = specOf(e)
+            rates.set(e.id, frac(cap.limited ? speedOf(cap.mk) : 0))
           }
           return
         }
@@ -157,7 +176,7 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
       case 'merger': {
         const r = sum(inEdges(n.id).map(rateOf))
         const o = outEdges(n.id)[0]
-        if (o) rates.set(o.id, r)
+        if (o) rates.set(o.id, limited(o, r))
         else if (!F.isZero(r))
           warn(
             'warn',
@@ -167,10 +186,11 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
       }
       case 'overflow': {
         const r = sum(inEdges(n.id).map(rateOf))
-        const out = F.cmp(r, valveCap) < 0 ? r : valveCap
-        const discarded = F.sub(r, out)
-        valves.set(n.id, { inflow: r, outflow: out, discarded })
+        const out0 = F.cmp(r, valveCap) < 0 ? r : valveCap
+        const discarded = F.sub(r, out0)
         const o = outEdges(n.id)[0]
+        const out = o ? limited(o, out0) : out0
+        valves.set(n.id, { inflow: r, outflow: out, discarded })
         if (o) rates.set(o.id, out)
         else if (!F.isZero(r))
           warn('info', `overflow valve ends a line carrying ${fmt(r)}`)
@@ -220,16 +240,12 @@ export function simulate(doc: SimDoc, maxMk = 6): SimResult {
     }
   }
 
-  // ---- belt sizing on every flowing edge (warn, never forbid)
+  // ---- belt sizing on every flowing edge (warn, never forbid); pinned
+  // belts already capped their flow above, so only unpinned can exceed
   for (const e of live) {
     const r = rateOf(e)
-    if (F.isZero(r)) continue
-    if (e.mk !== null && F.toNumber(r) > speedOf(e.mk))
-      warn(
-        'warn',
-        `a belt pinned to Mk.${e.mk} carries at most ${speedOf(e.mk)}/min but ${formatFrac(r)}/min runs through it`,
-      )
-    else if (minMkFor(r, maxMk) === null)
+    if (F.isZero(r) || e.mk !== null) continue
+    if (minMkFor(r, maxMk) === null)
       warn(
         'warn',
         `${formatFrac(r)}/min exceeds even a Mk.${maxMk} belt (${speedOf(maxMk)}/min)`,

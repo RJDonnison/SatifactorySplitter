@@ -354,3 +354,34 @@ describe('solve — shared tap pieces', () => {
     expect(verify(s).ok).toBe(true)
   })
 })
+
+describe('solve — inputs that exceed one belt', () => {
+  it('feeds small inputs straight into outputs instead of a merged trunk', () => {
+    const s = Smax([780, 20], [240, 150, 180, 60, 72, 42, 48], 5)
+    expect(s.ok).toBe(true)
+    expect(verify(s, 5).ok).toBe(true)
+    const rates = ratesByTarget(s)
+    const want = [240, 150, 180, 60, 72, 42, 48]
+    want.forEach((w, i) => {
+      expect(Math.abs(rates[`out${i + 1}`] - w)).toBeLessThanOrEqual(w * 0.06)
+    })
+    expect(s.warnings.some((w) => w.text.includes('join at the outputs'))).toBe(
+      true,
+    )
+    const maxEdge = Math.max(...s.edges.map((e) => F.toNumber(e.rate)))
+    expect(maxEdge).toBeLessThanOrEqual(780)
+  })
+
+  it('still errors when a small belt cannot be assigned whole', () => {
+    const s = Smax([780, 20], [15], 5)
+    expect(s.ok).toBe(false)
+    expect(s.warnings[0].text).toMatch(/Mk\.6/)
+  })
+
+  it('keeps using a merged trunk while it fits the cap', () => {
+    const s = Smax([480, 300], [780], 6)
+    expect(s.ok).toBe(true)
+    expect(s.buildings).toEqual({ splitters: 0, mergers: 1 })
+    expect(verify(s, 6).ok).toBe(true)
+  })
+})

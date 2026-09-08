@@ -197,7 +197,7 @@ describe('simulate — node semantics', () => {
     ).toBe(true)
   })
 
-  it('warns on belts pinned below their flow and flows beyond maxMk', () => {
+  it('respects a belt pinned below the flow (limiter, not a warning)', () => {
     const pinned: SimDoc = {
       nodes: [
         node({ id: 's', kind: 'source', rate: 480 }),
@@ -205,10 +205,39 @@ describe('simulate — node semantics', () => {
       ],
       edges: [edge('e0', 's', 0, 'k', 0, 1)],
     }
-    expect(
-      simulate(pinned).warnings.some((w) => w.text.includes('pinned to Mk.1')),
-    ).toBe(true)
+    const sim = simulate(pinned)
+    expect(near(sim.edges.get('e0')!, frac(60))).toBe(true)
+    expect(near(sim.sinks.get('k')!.achieved, frac(60))).toBe(true)
+    expect(sim.warnings.some((w) => w.text.includes('backs up'))).toBe(true)
+    expect(sim.warnings.some((w) => w.text.includes('under-supplied'))).toBe(
+      true,
+    )
+  })
 
+  it('a pinned splitter belt caps its port like a tap', () => {
+    const doc: SimDoc = {
+      nodes: [
+        node({ id: 's', kind: 'source', rate: 780 }),
+        node({
+          id: 'sp',
+          kind: 'splitter',
+          ports: [{ limited: false }, { limited: false }],
+        }),
+        node({ id: 'k1', kind: 'sink', rate: 60 }),
+        node({ id: 'k2', kind: 'sink', rate: 720 }),
+      ],
+      edges: [
+        edge('e0', 's', 0, 'sp', 0),
+        edge('e1', 'sp', 0, 'k1', 0, 1),
+        edge('e2', 'sp', 1, 'k2', 0),
+      ],
+    }
+    const sim = simulate(doc)
+    expect(near(sim.edges.get('e1')!, frac(60))).toBe(true)
+    expect(near(sim.edges.get('e2')!, frac(720))).toBe(true)
+  })
+
+  it('warns on flows beyond maxMk', () => {
     const beyond: SimDoc = {
       nodes: [
         node({ id: 's', kind: 'source', rate: 480 }),

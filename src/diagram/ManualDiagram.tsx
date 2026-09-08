@@ -10,6 +10,7 @@ import {
   applyNodeChanges,
   useReactFlow,
   type Connection,
+  type FinalConnectionState,
   type Edge,
   type EdgeChange,
   type NodeChange,
@@ -20,6 +21,8 @@ import {
   autoArrangeDoc,
   canConnect,
   connectEdge,
+  firstFreeInPort,
+  firstFreeOutPort,
   mapDocToFlow,
   moveNode,
   newMerger,
@@ -42,6 +45,23 @@ import type { SolutionNodeType } from './layout'
 
 const paletteBtn =
   'rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500'
+
+/** menu offered when a belt is dropped on empty canvas */
+interface DropMenu {
+  /** canvas-relative screen position for the popup */
+  sx: number
+  sy: number
+  /** grid-snapped flow position for the new building */
+  x: number
+  y: number
+  /** port the belt was dragged from */
+  nodeId: string
+  port: number
+  /** 'out' = dragged from an output port, 'in' = from an input port */
+  dir: 'out' | 'in'
+}
+
+const snap20 = (v: number) => Math.round(v / 20) * 20
 
 const fieldCls =
   'w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 focus:border-amber-500 focus:outline-none'
@@ -68,6 +88,9 @@ function ManualCanvas() {
   const { fitView, screenToFlowPosition } = useReactFlow()
   const [nodes, setNodes] = useState<SolutionNodeType[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
+  // popup shown when a belt drag ends on empty canvas instead of a port
+  const [drop, setDrop] = useState<DropMenu | null>(null)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
   // only fit when the canvas goes from empty to populated, so ordinary
   // edits never yank the viewport around
   const wasEmpty = useRef(true)
@@ -178,6 +201,79 @@ function ManualCanvas() {
     requestAnimationFrame(() => fitView({ padding: 0.25, duration: 300 }))
   }, [applyDoc, doc, fitView])
 
+  // a belt dropped on empty canvas offers to create an auto-connected
+  // building at the drop point (context-aware shortlist)
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.isValid || state.toNode) {
+        setDrop(null)
+        return
+      }
+      const from = state.fromHandle
+      if (!from?.nodeId) {
+        setDrop(null)
+        return
+      }
+      const touch = 'clientX' in event ? null : event.changedTouches[0]
+      const pt =
+        'clientX' in event
+          ? { x: event.clientX, y: event.clientY }
+          : touch
+            ? { x: touch.clientX, y: touch.clientY }
+            : null
+      if (!pt) {
+        setDrop(null)
+        return
+      }
+      const rect = wrapRef.current?.getBoundingClientRect()
+      const flow = screenToFlowPosition(pt)
+      setDrop({
+        sx: pt.x - (rect?.left ?? 0),
+        sy: pt.y - (rect?.top ?? 0),
+        x: snap20(flow.x),
+        y: snap20(flow.y),
+        nodeId: from.nodeId,
+        port: Number(String(from.id ?? 'p0').slice(1)) || 0,
+        dir: from.type === 'source' ? 'out' : 'in',
+      })
+    },
+    [screenToFlowPosition],
+  )
+
+  // create the picked building at the drop point and belt it to the drag origin
+  const dropAdd = useCallback(
+    (make: (x: number, y: number) => DocNode) => {
+      const menu = drop
+      setDrop(null)
+      if (!menu) return
+      applyDoc((d) => {
+        const n = make(menu.x, menu.y)
+        const d2 = addNode(d, n)
+        if (menu.dir === 'out') {
+          const p = firstFreeInPort(d2, n.id)
+          return p !== null && canConnect(d2, menu.nodeId, menu.port, n.id, p)
+            ? connectEdge(d2, menu.nodeId, menu.port, n.id, p)
+            : d2
+        }
+        const p = firstFreeOutPort(d2, n.id)
+        return p !== null && canConnect(d2, n.id, p, menu.nodeId, menu.port)
+          ? connectEdge(d2, n.id, p, menu.nodeId, menu.port)
+          : d2
+      })
+    },
+    [applyDoc, drop],
+  )
+
+  // Escape dismisses the drop menu
+  useEffect(() => {
+    if (!drop) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrop(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drop])
+
   if (!doc) return null
 
   const selNode = nodes.find((n) => n.selected) ?? null
@@ -190,120 +286,93 @@ function ManualCanvas() {
     : null
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onNodeDragStop={onNodeDragStop}
-      snapToGrid
-      snapGrid={[20, 20]}
-      deleteKeyCode={['Backspace', 'Delete']}
-      minZoom={0.1}
-      maxZoom={2}
-      nodesDraggable
-      nodesConnectable
-      elementsSelectable
-      proOptions={{ hideAttribution: false }}
-    >
-      <Panel position="top-left">
-        <div className="flex w-36 flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-950/90 p-2 shadow-lg shadow-black/40">
-          <span className="px-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-            Add
-          </span>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add(newSource)}
-          >
-            Input belt
-          </button>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add(newSink)}
-          >
-            Output
-          </button>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add(newValve)}
-          >
-            Overflow valve
-          </button>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add((x, y) => newSplitter(2, x, y))}
-          >
-            Splitter · 2
-          </button>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add((x, y) => newSplitter(3, x, y))}
-          >
-            Splitter · 3
-          </button>
-          <button
-            type="button"
-            className={paletteBtn}
-            onClick={() => add(newMerger)}
-          >
-            Merger
-          </button>
-          <button type="button" className={paletteBtn} onClick={arrange}>
-            Auto-arrange…
-          </button>
-        </div>
-      </Panel>
-
-      {(selDocNode || selDocEdge) && (
-        <Panel position="top-right">
-          <div
-            className="flex w-52 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/90 p-3 shadow-lg shadow-black/40"
-            data-testid="inspector"
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              {selDocNode ? selDocNode.kind : 'belt'}
+    <div ref={wrapRef} className="relative h-full w-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
+        onNodeDragStop={onNodeDragStop}
+        onPaneClick={() => setDrop(null)}
+        onNodeDragStart={() => setDrop(null)}
+        snapToGrid
+        snapGrid={[20, 20]}
+        deleteKeyCode={['Backspace', 'Delete']}
+        minZoom={0.1}
+        maxZoom={2}
+        nodesDraggable
+        nodesConnectable
+        elementsSelectable
+        proOptions={{ hideAttribution: false }}
+      >
+        <Panel position="top-left">
+          <div className="flex w-36 flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-950/90 p-2 shadow-lg shadow-black/40">
+            <span className="px-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+              Add
             </span>
-            {selDocNode?.kind === 'source' && (
-              <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                rate /min
-                <input
-                  type="number"
-                  min={0}
-                  max={1200}
-                  className={fieldCls}
-                  value={selDocNode.rate}
-                  onChange={(e) =>
-                    applyDoc((d) =>
-                      setNodeRate(d, selDocNode.id, Number(e.target.value)),
-                    )
-                  }
-                />
-              </label>
-            )}
-            {selDocNode?.kind === 'sink' && (
-              <>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add(newSource)}
+            >
+              Input belt
+            </button>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add(newSink)}
+            >
+              Output
+            </button>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add(newValve)}
+            >
+              Overflow valve
+            </button>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add((x, y) => newSplitter(2, x, y))}
+            >
+              Splitter · 2
+            </button>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add((x, y) => newSplitter(3, x, y))}
+            >
+              Splitter · 3
+            </button>
+            <button
+              type="button"
+              className={paletteBtn}
+              onClick={() => add(newMerger)}
+            >
+              Merger
+            </button>
+            <button type="button" className={paletteBtn} onClick={arrange}>
+              Auto-arrange…
+            </button>
+          </div>
+        </Panel>
+
+        {(selDocNode || selDocEdge) && (
+          <Panel position="top-right">
+            <div
+              className="flex w-52 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/90 p-3 shadow-lg shadow-black/40"
+              data-testid="inspector"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                {selDocNode ? selDocNode.kind : 'belt'}
+              </span>
+              {selDocNode?.kind === 'source' && (
                 <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                  label
-                  <input
-                    type="text"
-                    className={fieldCls}
-                    value={selDocNode.label}
-                    onChange={(e) =>
-                      applyDoc((d) =>
-                        setSinkLabel(d, selDocNode.id, e.target.value),
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                  wants /min
+                  rate /min
                   <input
                     type="number"
                     min={0}
@@ -317,106 +386,197 @@ function ManualCanvas() {
                     }
                   />
                 </label>
-              </>
-            )}
-            {selDocNode?.kind === 'splitter' && (
-              <>
-                <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                  ports
-                  <select
-                    className={fieldCls}
-                    value={selDocNode.ports.length}
-                    onChange={(e) =>
-                      applyDoc((d) =>
-                        setSplitterPorts(
-                          d,
-                          selDocNode.id,
-                          Number(e.target.value) as 2 | 3,
-                        ),
-                      )
-                    }
-                  >
-                    <option value={2}>2 outputs</option>
-                    <option value={3}>3 outputs</option>
-                  </select>
-                </label>
-                {selDocNode.ports.map((p, i) => (
-                  <label
-                    key={i}
-                    className="flex flex-col gap-1 text-xs text-zinc-400"
-                  >
-                    port {i + 1}
-                    <select
+              )}
+              {selDocNode?.kind === 'sink' && (
+                <>
+                  <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                    label
+                    <input
+                      type="text"
                       className={fieldCls}
-                      value={p.limited ? p.mk : 0}
+                      value={selDocNode.label}
                       onChange={(e) =>
                         applyDoc((d) =>
-                          setPortTap(
+                          setSinkLabel(d, selDocNode.id, e.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                    wants /min
+                    <input
+                      type="number"
+                      min={0}
+                      max={1200}
+                      className={fieldCls}
+                      value={selDocNode.rate}
+                      onChange={(e) =>
+                        applyDoc((d) =>
+                          setNodeRate(d, selDocNode.id, Number(e.target.value)),
+                        )
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              {selDocNode?.kind === 'splitter' && (
+                <>
+                  <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                    ports
+                    <select
+                      className={fieldCls}
+                      value={selDocNode.ports.length}
+                      onChange={(e) =>
+                        applyDoc((d) =>
+                          setSplitterPorts(
                             d,
                             selDocNode.id,
-                            i,
-                            Number(e.target.value) || null,
+                            Number(e.target.value) as 2 | 3,
                           ),
                         )
                       }
                     >
-                      <option value={0}>open split</option>
-                      {[1, 2, 3, 4, 5, 6].map((m) => (
-                        <option key={m} value={m}>
-                          Mk.{m} tap
-                        </option>
-                      ))}
+                      <option value={2}>2 outputs</option>
+                      <option value={3}>3 outputs</option>
                     </select>
                   </label>
-                ))}
-              </>
-            )}
-            {selDocEdge && (
-              <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                belt Mk
-                <select
-                  className={fieldCls}
-                  value={selDocEdge.mk ?? 0}
-                  onChange={(e) =>
-                    applyDoc((d) =>
-                      setEdgeMk(
-                        d,
-                        selDocEdge.id,
-                        Number(e.target.value) || null,
-                      ),
-                    )
-                  }
-                >
-                  <option value={0}>auto (smallest)</option>
-                  {[1, 2, 3, 4, 5, 6].map((m) => (
-                    <option key={m} value={m}>
-                      Mk.{m}
-                    </option>
+                  {selDocNode.ports.map((p, i) => (
+                    <label
+                      key={i}
+                      className="flex flex-col gap-1 text-xs text-zinc-400"
+                    >
+                      port {i + 1}
+                      <select
+                        className={fieldCls}
+                        value={p.limited ? p.mk : 0}
+                        onChange={(e) =>
+                          applyDoc((d) =>
+                            setPortTap(
+                              d,
+                              selDocNode.id,
+                              i,
+                              Number(e.target.value) || null,
+                            ),
+                          )
+                        }
+                      >
+                        <option value={0}>open split</option>
+                        {[1, 2, 3, 4, 5, 6].map((m) => (
+                          <option key={m} value={m}>
+                            Mk.{m} tap
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   ))}
-                </select>
-              </label>
-            )}
-          </div>
-        </Panel>
-      )}
+                </>
+              )}
+              {selDocEdge && (
+                <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                  belt Mk
+                  <select
+                    className={fieldCls}
+                    value={selDocEdge.mk ?? 0}
+                    onChange={(e) =>
+                      applyDoc((d) =>
+                        setEdgeMk(
+                          d,
+                          selDocEdge.id,
+                          Number(e.target.value) || null,
+                        ),
+                      )
+                    }
+                  >
+                    <option value={0}>auto (smallest)</option>
+                    {[1, 2, 3, 4, 5, 6].map((m) => (
+                      <option key={m} value={m}>
+                        Mk.{m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                className="rounded-lg border border-red-900/70 bg-red-950/40 px-2.5 py-1.5 text-xs font-medium text-red-300 transition-colors hover:border-red-500 hover:text-red-200"
+                onClick={() => {
+                  if (selDocNode)
+                    applyDoc((d) => removeNodes(d, [selDocNode.id]))
+                  else if (selDocEdge)
+                    applyDoc((d) => removeEdges(d, [selDocEdge.id]))
+                  setDrop(null)
+                }}
+              >
+                Delete {selDocNode ? 'building' : 'belt'}
+              </button>
+            </div>
+          </Panel>
+        )}
 
-      {sim && sim.warnings.length > 0 && (
-        <Panel position="bottom-left">
-          <ul
-            className="flex max-h-44 w-72 flex-col gap-1 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950/90 p-2.5 text-xs shadow-lg shadow-black/40"
-            data-testid="manual-warnings"
+        {sim && sim.warnings.length > 0 && (
+          <Panel position="bottom-left">
+            <ul
+              className="flex max-h-44 w-72 flex-col gap-1 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950/90 p-2.5 text-xs shadow-lg shadow-black/40"
+              data-testid="manual-warnings"
+            >
+              {sim.warnings.map((w, i) => (
+                <li key={i} className={warnCls(w.level)}>
+                  {w.text}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+
+        <Background variant={BackgroundVariant.Dots} gap={28} color="#27272a" />
+        <Controls showInteractive={false} position="bottom-right" />
+      </ReactFlow>
+      {drop && (
+        <div
+          className="absolute z-10 flex w-40 flex-col gap-1 rounded-xl border border-zinc-700 bg-zinc-950/95 p-2 shadow-xl shadow-black/50"
+          style={{ left: drop.sx, top: drop.sy }}
+          data-testid="drop-menu"
+        >
+          <span className="px-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+            Connect to
+          </span>
+          {(drop.dir === 'out'
+            ? ([
+                ['Output', newSink],
+                [
+                  'Splitter · 2',
+                  (x: number, y: number) => newSplitter(2, x, y),
+                ],
+                [
+                  'Splitter · 3',
+                  (x: number, y: number) => newSplitter(3, x, y),
+                ],
+                ['Merger', newMerger],
+                ['Overflow valve', newValve],
+              ] as [string, (x: number, y: number) => DocNode][])
+            : ([['Input belt', newSource]] as [
+                string,
+                (x: number, y: number) => DocNode,
+              ][])
+          ).map(([label, make]) => (
+            <button
+              key={label}
+              type="button"
+              className={paletteBtn}
+              onClick={() => dropAdd(make)}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="px-2.5 py-1 text-left text-[10px] text-zinc-500 hover:text-zinc-300"
+            onClick={() => setDrop(null)}
           >
-            {sim.warnings.map((w, i) => (
-              <li key={i} className={warnCls(w.level)}>
-                {w.text}
-              </li>
-            ))}
-          </ul>
-        </Panel>
+            cancel (Esc)
+          </button>
+        </div>
       )}
-
-      <Background variant={BackgroundVariant.Dots} gap={28} color="#27272a" />
-      <Controls showInteractive={false} position="bottom-right" />
-    </ReactFlow>
+    </div>
   )
 }

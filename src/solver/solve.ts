@@ -15,7 +15,13 @@ import {
   mkForSpeed,
   planTapChain,
 } from './taps'
-import type { Solution, SolveInput, TargetSpec, Warning } from './types'
+import type {
+  NetNode,
+  Solution,
+  SolveInput,
+  TargetSpec,
+  Warning,
+} from './types'
 import { verify } from './verify'
 
 export function solve(input: SolveInput): Solution {
@@ -43,6 +49,15 @@ export function solve(input: SolveInput): Solution {
   const Rf = frac(totalIn)
   const maxMk = Math.min(6, Math.max(1, Math.round(input.maxMk ?? 6)))
   const notes: Warning[] = []
+
+  // When the inputs cannot share a single belt (total exceeds the max Mk),
+  // the largest input becomes the trunk and the smaller inputs feed their
+  // outputs directly, joined at the sink — no segment needs a faster belt.
+  const cap = speedOf(maxMk)
+  if (totalIn > cap && inputRates.every((r) => r <= cap)) {
+    const boosted = boostSolve(inputRates, targets, input.tolerance, maxMk)
+    if (boosted) return boosted
+  }
 
   const candidates = buildCandidates(
     inputRates,
@@ -512,4 +527,131 @@ function chunkSolution(
   const sol = finish(b, targets, approximate, warnings)
   sol.inputRate = Rf
   return sol
+}
+
+/** Solve a problem whose inputs cannot share one belt: the largest input
+ * drives the trunk (solved with the normal candidate machinery on reduced
+ * outputs), and each smaller input belt feeds an output directly, merged
+ * into that output's sink. Returns null when the small belts cannot be
+ * assigned whole to outputs. */
+function boostSolve(
+  inputRates: number[],
+  targets: TargetSpec[],
+  tolerance: number,
+  maxMk: number,
+): Solution | null {
+  const sorted = [...inputRates].sort((a, b) => b - a)
+  const trunk = sorted[0]
+  const belts = sorted.slice(1)
+  const auxTotal = belts.reduce((a, b) => a + b, 0)
+
+  // assign each small belt whole to the output with the most spare rate
+  // (at most two per output — a sink merger has three inputs)
+  const spare = new Map(targets.map((t) => [t.id, t.rate]))
+  const count = new Map<string, number>()
+  const picked = new Map<string, number[]>()
+  for (const belt of belts) {
+    let best: TargetSpec | null = null
+    for (const t of targets) {
+      if ((spare.get(t.id) ?? 0) < belt - 1e-9) continue
+      if ((count.get(t.id) ?? 0) >= 2) continue
+      if (!best || (spare.get(t.id) ?? 0) > (spare.get(best.id) ?? 0)) best = t
+    }
+    if (!best) return null
+    spare.set(best.id, (spare.get(best.id) ?? 0) - belt)
+    count.set(best.id, (count.get(best.id) ?? 0) + 1)
+    const list = picked.get(best.id) ?? []
+    list.push(belt)
+    picked.set(best.id, list)
+  }
+
+  const reduced: TargetSpec[] = []
+  const dropped: TargetSpec[] = []
+  for (const t of targets) {
+    const used = (picked.get(t.id) ?? []).reduce((a, b) => a + b, 0)
+    if (t.rate - used > 1e-9) reduced.push({ id: t.id, rate: t.rate - used })
+    else dropped.push(t)
+  }
+
+  const b = new NetBuilder(maxMk)
+  let sub: Solution
+  if (reduced.length > 0) {
+    const cands = buildCandidates(
+      [trunk],
+      frac(trunk),
+      reduced,
+      tolerance,
+      maxMk,
+      [],
+    )
+    const best = cands.filter((c) => verify(c, maxMk).ok).sort(cmpSolution)[0]
+    if (!best) return null
+    sub = best
+  } else {
+    // every output is fed entirely by the small belts; the trunk overflows
+    const trunkEnd = buildTrunk(b, [trunk])
+    const ovf = b.overflowNode()
+    b.connect(trunkEnd.node, trunkEnd.port, ovf.id, 0, trunkEnd.rate)
+    ovf.setRate(trunkEnd.rate)
+    sub = finish(
+      b,
+      targets,
+      targets.map(() => false),
+      [
+        {
+          level: 'info',
+          text: `${formatFrac(trunkEnd.rate)}/min surplus is routed to an overflow belt.`,
+        },
+      ],
+    )
+    sub.inputRate = frac(trunk)
+  }
+
+  // splice the small belts in: one fresh merger joins each boosted sink's
+  // existing feed with its assigned belts (ports 1-2, feed moves to port 0)
+  for (const t of targets) {
+    const list = picked.get(t.id)
+    if (!list) continue
+    const ends = list.map((r) => {
+      const src = b.source(frac(r))
+      return { node: src, port: 0, rate: frac(r), tapMk: null }
+    })
+    let sinkId: string
+    if (dropped.includes(t)) {
+      sinkId = b.sink(t.id, frac(t.rate), false)
+      b.mergeInto(ends, sinkId)
+    } else {
+      const sink = sub.nodes.find(
+        (n): n is Extract<NetNode, { kind: 'sink' }> =>
+          n.kind === 'sink' && n.target === t.id,
+      )
+      if (!sink) return null
+      sinkId = sink.id
+      const feed = sub.edges.find((e) => e.dst === sinkId)
+      if (!feed) return null
+      const achieved = F.add(feed.rate, frac(list.reduce((a, c) => a + c, 0)))
+      sink.rate = achieved
+      if (!F.eq(achieved, frac(t.rate))) sink.approximate = true
+      const mg = b.merger()
+      feed.dst = mg
+      feed.dstPort = 0
+      ends.forEach((e, i) => b.connect(e.node, e.port, mg, i + 1, e.rate))
+      b.connect(mg, 0, sinkId, 0, achieved)
+    }
+  }
+
+  sub.nodes.push(...b.nodes)
+  sub.edges.push(...b.edges)
+  sub.buildings.mergers += b.nodes.filter((n) => n.kind === 'merger').length
+  sub.excess += b.edges.reduce(
+    (acc, e) => acc + (e.minMk ? speedOf(e.minMk) - F.toNumber(e.rate) : 0),
+    0,
+  )
+  sub.outputIds = targets.map((t) => t.id)
+  sub.inputRate = frac(trunk + auxTotal)
+  sub.warnings.unshift({
+    level: 'info',
+    text: `Inputs exceed one Mk.${maxMk} belt — ${auxTotal}/min of small inputs join at the outputs instead of a merged trunk.`,
+  })
+  return verify(sub, maxMk).ok ? sub : null
 }

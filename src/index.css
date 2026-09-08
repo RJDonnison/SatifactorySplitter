@@ -70,3 +70,19 @@ input[type='number'] {
 .react-flow__edge-textbg {
   fill: #09090b;
 }
+
+/* clear selection highlight in the manual editor */
+.react-flow__node.selected {
+  box-shadow:
+    0 0 0 2px #fbbf24,
+    0 0 18px rgba(251, 191, 36, 0.35);
+  border-radius: 12px;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #fbbf24 !important;
+  stroke-width: 3 !important;
+}
+.react-flow__edge.selected .react-flow__edge-text {
+  fill: #fde68a;
+  font-weight: 600;
+}

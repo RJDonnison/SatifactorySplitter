@@ -112,6 +112,63 @@ test.describe('manual mode', () => {
     // fresh snapshot of 780 -> 390 + 390 replaces the edited doc
     await expect(page.locator('.react-flow__node')).toHaveCount(4)
   })
+
+  test('dropping a belt on empty canvas offers auto-connected buildings', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Edit layout' }).click()
+    await expect(page.locator('.react-flow__node')).toHaveCount(4)
+    // a fresh splitter gives us a free output port to drag from
+    await page
+      .getByRole('button', { name: 'Splitter · 2', exact: true })
+      .click()
+    await expect(page.locator('.react-flow__node')).toHaveCount(5)
+    // let the canvas settle so the drag registers on the fresh handle
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    const edges = page.locator('.react-flow__edge')
+    await expect(edges).toHaveCount(3)
+
+    // drag from the palette splitter's first output handle to empty canvas
+    const handle = page.locator(
+      '.react-flow__node[data-id^="n"] .react-flow__handle[data-handlepos="right"] >> nth=0',
+    )
+    const box = await handle.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
+    })
+    const pane = (await page.locator('.react-flow').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 40, box.y + 20, { steps: 4 })
+    await page.mouse.move(
+      pane.x + pane.width * 0.3,
+      pane.y + pane.height * 0.8,
+      {
+        steps: 8,
+      },
+    )
+    await page.mouse.up()
+
+    const menu = page.getByTestId('drop-menu')
+    await expect(menu).toBeVisible()
+    await menu.getByRole('button', { name: 'Output', exact: true }).click()
+
+    // the new output is auto-connected to the dragged belt
+    await expect(page.locator('.react-flow__node')).toHaveCount(6)
+    await expect(edges).toHaveCount(4)
+  })
+
+  test('inspector has a delete button', async ({ page }) => {
+    await page.getByRole('button', { name: 'Edit layout' }).click()
+    await page.locator('.react-flow__node[data-id="sp2"]').click()
+    const inspector = page.getByTestId('inspector')
+    await expect(inspector).toBeVisible()
+    await inspector.getByRole('button', { name: 'Delete building' }).click()
+    // splitter + its cascade of belts disappear
+    await expect(page.locator('.react-flow__node')).toHaveCount(3)
+    await expect(page.locator('.react-flow__edge')).toHaveCount(0)
+  })
 })
 
 test.describe('small screens', () => {
